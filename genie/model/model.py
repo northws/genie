@@ -18,7 +18,8 @@ class Denoiser(nn.Module):
                  n_structure_layer, n_structure_block,
                  c_hidden_ipa, n_head_ipa, n_qk_point, n_v_point, ipa_dropout,
                  n_structure_transition_layer, structure_transition_dropout,
-                 use_flash_ipa=True  # Optimization: Enable FlashIPA
+                 use_flash_ipa=True,  # Optimization: Enable FlashIPA
+                 max_n_res=None
                  ):
         super(Denoiser, self).__init__()
 
@@ -63,7 +64,8 @@ class Denoiser(nn.Module):
             ipa_dropout,
             n_structure_transition_layer,
             structure_transition_dropout,
-            use_flash_ipa=use_flash_ipa
+            use_flash_ipa=use_flash_ipa,
+            max_n_res=max_n_res
         )
 
     def forward(self, ts, timesteps, mask):

@@ -1,6 +1,13 @@
 import wandb
 import argparse
+import os
+
+# [Optimization] Reduce memory fragmentation
+# Setting this before importing torch to ensure it takes effect
+os.environ['PYTORCH_ALLOC_CONF'] = 'expandable_segments:True'
+
 import torch  # [Added] Needed for matmul precision settings
+
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.trainer import Trainer, seed_everything
 from pytorch_lightning.loggers import WandbLogger, TensorBoardLogger
@@ -14,6 +21,11 @@ def main(args):
     # [Optimization] Enable TF32 on Ampere+ GPUs (A100, RTX3090, etc.)
     # 'medium' or 'high' enables Tensor Cores for float32 matrix multiplications
     torch.set_float32_matmul_precision('medium')
+
+    # [Optimization] Enable cuDNN benchmark for fixed input sizes
+    # This finds the best convolution algorithms for the hardware
+    if torch.cuda.is_available():
+        torch.backends.cudnn.benchmark = True
 
     # configuration
     config = Config(filename=args.config)
@@ -56,7 +68,7 @@ def main(args):
         accelerator=accelerator,  # [Updated] Explicit accelerator definition
         devices=gpus,  # [Updated] Replaces the old 'gpus' arg
         logger=[tb_logger, wandb_logger],
-        strategy='ddp_find_unused_parameters_true',
+        strategy='ddp',
         # 'ddp' is fine, usually explicitly handling unused params is safer for complex models
 
         # [Optimization] Tensor Core Support

@@ -406,7 +406,8 @@ def generate_coords(domains, output_dir, model_id=0):
 
         # save coordinates
         coords_filepath = os.path.join(coords_dir, '{}.npy'.format(domain['domain_id']))
-        np.savetxt(coords_filepath, coords, delimiter=',')
+        # Optimization: Save as binary for faster loading
+        np.save(coords_filepath, coords)
 
 
 if __name__ == '__main__':

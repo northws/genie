@@ -63,7 +63,8 @@ class Config:
 			'ipa_dropout':                  float(config.get('ipaDropout',                              0.1)),
 			'n_structure_transition_layer':   int(config.get('numStructureTransitionLayers',            1)),
 			'structure_transition_dropout': float(config.get('structureTransitionDropout',              0.1)),
-			'use_flash_ipa':                      config.get('useFlashIPA',                             True)
+			'use_flash_ipa':                      config.get('useFlashIPA',                             True),
+			'max_n_res':                          self.io['max_n_res']
 
 		}
 

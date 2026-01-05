@@ -7,8 +7,13 @@ import pandas as pd # Optimization: Faster CSV reading
 
 
 def load_coord(filepath):
-    # Optimization: Use pandas for faster CSV reading
-    return pd.read_csv(filepath, header=None).values
+    try:
+        # Try loading as binary npy first
+        return np.load(filepath)
+    except (ValueError, OSError, pickle.UnpicklingError):
+        # Fallback to CSV reading if it's not a valid npy binary
+        # Optimization: Use pandas for faster CSV reading
+        return pd.read_csv(filepath, header=None).values
 
 
 def load_classes(filepath):

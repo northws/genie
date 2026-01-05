@@ -8,7 +8,10 @@ from genie.model.modules.backbone_update import BackboneUpdate
 
 # Optimization: Try to import FlashIPA
 try:
-    from flash_ipa import FlashIPA
+    from flash_ipa.ipa import InvariantPointAttention as FlashIPA, IPAConfig
+    from flash_ipa.factorizer import LinearFactorizer
+    from flash_ipa.rigid import create_rigid
+    from flash_ipa.utils import ANG_TO_NM_SCALE
 
     HAS_FLASH_IPA = True
 except ImportError:
@@ -27,23 +30,44 @@ class StructureLayer(nn.Module):
                  ipa_dropout,
                  n_structure_transition_layer,
                  structure_transition_dropout,
-                 use_flash_ipa=False  # Optimization Flag
+                 use_flash_ipa=False,  # Optimization Flag
+                 max_n_res=None
                  ):
         super(StructureLayer, self).__init__()
 
+        self.use_flash_ipa = use_flash_ipa and HAS_FLASH_IPA and (max_n_res is not None)
+        if use_flash_ipa and not self.use_flash_ipa:
+             if not HAS_FLASH_IPA:
+                 print("Warning: use_flash_ipa=True but flash_ipa not installed. Fallback to standard IPA.")
+             if max_n_res is None:
+                 print("Warning: use_flash_ipa=True but max_n_res is None. Fallback to standard IPA.")
+
         # Optimization: Conditional FlashIPA initialization
-        if use_flash_ipa and HAS_FLASH_IPA:
-            self.ipa = FlashIPA(
-                c_s,
-                c_p,
-                c_hidden_ipa,
-                n_head,
-                n_qk_point,
-                n_v_point
+        if self.use_flash_ipa:
+            # FlashIPA Config
+            # Assuming z_factor_rank=2 as per README example, or we could make it configurable
+            self.z_factor_rank = 2
+            ipa_conf = IPAConfig(
+                use_flash_attn=True,
+                attn_dtype="bf16", # Assuming Ampere+ GPU as per context
+                c_s=c_s,
+                c_z=c_p,
+                c_hidden=c_hidden_ipa,
+                no_heads=n_head,
+                z_factor_rank=self.z_factor_rank,
+                no_qk_points=n_qk_point,
+                no_v_points=n_v_point,
+            )
+            self.ipa = FlashIPA(ipa_conf)
+            
+            # Factorizer to convert full pair embeddings (p) to z_factors
+            self.factorizer = LinearFactorizer(
+                in_L=max_n_res,
+                in_D=c_p,
+                target_rank=self.z_factor_rank,
+                target_inner_dim=c_p,
             )
         else:
-            if use_flash_ipa and not HAS_FLASH_IPA:
-                print("Warning: use_flash_ipa=True but flash_ipa not installed. Fallback to standard IPA.")
             self.ipa = InvariantPointAttention(
                 c_s,
                 c_p,
@@ -70,7 +94,16 @@ class StructureLayer(nn.Module):
         s, p, t, mask = inputs
 
         # Apply IPA (Standard or Flash)
-        s = s + self.ipa(s, p, t, mask)
+        if self.use_flash_ipa:
+            # Convert t (genie T object) to FlashIPA Rigid
+            curr_rigids = create_rigid(t.rots, t.trans)
+            
+            # Factorize p (B, L, L, C_p) -> z_factor_1, z_factor_2
+            z_factor_1, z_factor_2 = self.factorizer(p, mask)
+            
+            s = self.ipa(s, None, z_factor_1, z_factor_2, curr_rigids, mask)
+        else:
+            s = s + self.ipa(s, p, t, mask)
 
         s = self.ipa_dropout(s)
         s = self.ipa_layer_norm(s)
@@ -94,7 +127,8 @@ class StructureNet(nn.Module):
                  ipa_dropout,
                  n_structure_transition_layer,
                  structure_transition_dropout,
-                 use_flash_ipa=False  # Pass optimization flag
+                 use_flash_ipa=False,  # Pass optimization flag
+                 max_n_res=None
                  ):
         super(StructureNet, self).__init__()
 
@@ -105,7 +139,8 @@ class StructureNet(nn.Module):
                 c_s, c_p,
                 c_hidden_ipa, n_head_ipa, n_qk_point, n_v_point, ipa_dropout,
                 n_structure_transition_layer, structure_transition_dropout,
-                use_flash_ipa=use_flash_ipa
+                use_flash_ipa=use_flash_ipa,
+                max_n_res=max_n_res
             )
             for _ in range(n_structure_layer)
         ]

@@ -35,7 +35,8 @@ class PairTransformLayer(nn.Module):
                  n_head_tri,
                  tri_dropout,
                  pair_transition_n,
-                 use_optimized_kernel=True  # Optimization flag
+                 use_optimized_kernel=True,  # Optimization flag
+                 use_grad_checkpoint=False   # Optimization flag
                  ):
         super(PairTransformLayer, self).__init__()
 
@@ -50,12 +51,14 @@ class PairTransformLayer(nn.Module):
             # Fallback to original modules
             self.tri_mul_out = TriangleMultiplicationOutgoing(
                 c_p,
-                c_hidden_mul
+                c_hidden_mul,
+                use_grad_checkpoint=use_grad_checkpoint
             ) if include_mul_update else None
 
             self.tri_mul_in = TriangleMultiplicationIncoming(
                 c_p,
-                c_hidden_mul
+                c_hidden_mul,
+                use_grad_checkpoint=use_grad_checkpoint
             ) if include_mul_update else None
 
         self.tri_att_start = TriangleAttentionStartingNode(
@@ -116,7 +119,8 @@ class PairTransformNet(nn.Module):
                  c_hidden_tri_att,
                  n_head_tri,
                  tri_dropout,
-                 pair_transition_n
+                 pair_transition_n,
+                 use_grad_checkpoint=False # Optimization flag
                  ):
         super(PairTransformNet, self).__init__()
 
@@ -130,7 +134,8 @@ class PairTransformNet(nn.Module):
                 n_head_tri,
                 tri_dropout,
                 pair_transition_n,
-                use_optimized_kernel=True  # Enable optimization by default
+                use_optimized_kernel=True,  # Enable optimization by default
+                use_grad_checkpoint=use_grad_checkpoint
             )
             for _ in range(n_pair_transform_layer)
         ]

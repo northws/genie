@@ -103,20 +103,7 @@ class Diffusion(LightningModule, ABC):
 		return loss
 
 	def configure_optimizers(self):
-		# Optimization: Use fused Adam if available (PyTorch 2.0+)
-		# Fused kernels are significantly faster on GPU
-		optimizer_kwargs = {'lr': self.config.optimization['lr']}
-		if torch.cuda.is_available() and hasattr(torch.optim.Adam, 'support_fused'):
-			# Check if the version supports it (usually 2.0+)
-			optimizer_kwargs['fused'] = True
-		elif torch.cuda.is_available():
-			# Fallback check for newer PyTorch versions where it's a standard arg
-			try:
-				return Adam(self.model.parameters(), fused=True, **optimizer_kwargs)
-			except TypeError:
-				pass # Fallback to standard
-
 		return Adam(
 			self.model.parameters(),
-			**optimizer_kwargs
+			lr=self.config.optimization['lr']
 		)

@@ -74,7 +74,10 @@ def main(args):
         # [Optimization] Tensor Core Support
         # '16-mixed' uses FP16 for matmul (Tensor Cores) and FP32 for stability.
         # Use 'bf16-mixed' if you are on A100/H100 for better stability.
-        precision='16-mixed',
+        precision='bf16-mixed' if torch.cuda.is_bf16_supported() else '16-mixed',
+        
+        # [Stability] Gradient Clipping to prevent NaN loss
+        gradient_clip_val=1.0,
 
         deterministic=False,  # [Optimization] Changed to False for speed unless reproducibility is strictly required
         enable_progress_bar=True,  # Changed to True usually for UX, set False if running in strict pipeline

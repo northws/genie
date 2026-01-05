@@ -64,7 +64,8 @@ class Config:
 			'n_structure_transition_layer':   int(config.get('numStructureTransitionLayers',            1)),
 			'structure_transition_dropout': float(config.get('structureTransitionDropout',              0.1)),
 			'use_flash_ipa':                      config.get('useFlashIPA',                             True),
-			'max_n_res':                          self.io['max_n_res']
+			'max_n_res':                          self.io['max_n_res'],
+			'use_grad_checkpoint':                config.get('useGradientCheckpointing',                False) # Optimization: Default to False for speed
 
 		}
 

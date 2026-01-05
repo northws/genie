@@ -12,7 +12,7 @@ class TriangleMultiplicativeUpdate(nn.Module):
         Implements Algorithms 11 and 12 with Memory Optimizations.
     """
 
-    def __init__(self, c_z, c_hidden, _outgoing=True):
+    def __init__(self, c_z, c_hidden, _outgoing=True, use_grad_checkpoint=False):
         """
             Args:
                 c_z: Input channel dimension
@@ -22,6 +22,7 @@ class TriangleMultiplicativeUpdate(nn.Module):
         self.c_z = c_z
         self.c_hidden = c_hidden
         self._outgoing = _outgoing
+        self.use_grad_checkpoint = use_grad_checkpoint
 
         self.linear_a_p = Linear(self.c_z, self.c_hidden)
         self.linear_a_g = Linear(self.c_z, self.c_hidden, init="gating")
@@ -73,7 +74,7 @@ class TriangleMultiplicativeUpdate(nn.Module):
 
         # Optimization: Apply gradient checkpointing during training
         # This prevents OOM errors on long sequences for O(N^3) ops
-        if self.training and z.requires_grad:
+        if self.training and z.requires_grad and self.use_grad_checkpoint:
             z_out = checkpoint(self._run_block, z, mask, use_reentrant=False)
             # Note: We need to reconstruct 'z' from input + update outside standard residual
             # But here the residual connection is usually handled by the parent layer (PairTransformLayer)

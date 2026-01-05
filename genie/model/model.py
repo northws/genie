@@ -19,7 +19,8 @@ class Denoiser(nn.Module):
                  c_hidden_ipa, n_head_ipa, n_qk_point, n_v_point, ipa_dropout,
                  n_structure_transition_layer, structure_transition_dropout,
                  use_flash_ipa=True,  # Optimization: Enable FlashIPA
-                 max_n_res=None
+                 max_n_res=None,
+                 use_grad_checkpoint=False # Optimization: Control gradient checkpointing
                  ):
         super(Denoiser, self).__init__()
 
@@ -46,7 +47,8 @@ class Denoiser(nn.Module):
             c_hidden_tri_att,
             n_head_tri,
             tri_dropout,
-            pair_transition_n
+            pair_transition_n,
+            use_grad_checkpoint=use_grad_checkpoint
         ) if n_pair_transform_layer > 0 else None
 
         # Optimization: Pass the flash_ipa flag to StructureNet
@@ -65,7 +67,8 @@ class Denoiser(nn.Module):
             n_structure_transition_layer,
             structure_transition_dropout,
             use_flash_ipa=use_flash_ipa,
-            max_n_res=max_n_res
+            max_n_res=max_n_res,
+            use_grad_checkpoint=use_grad_checkpoint
         )
 
     def forward(self, ts, timesteps, mask):

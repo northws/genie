@@ -2,12 +2,14 @@ import torch
 import numpy as np
 
 
-def distance(p, eps=1e-10):
+@torch.jit.script
+def distance(p, eps: float = 1e-10):
     # [*, 2, 3]
     return (eps + torch.sum((p[..., 0, :] - p[..., 1, :]) ** 2, dim=-1)) ** 0.5
 
 
-def dihedral(p, eps=1e-10):
+@torch.jit.script
+def dihedral(p, eps: float = 1e-10):
     # p: [*, 4, 3]
 
     # [*, 3]
@@ -32,7 +34,8 @@ def dihedral(p, eps=1e-10):
     return torch.stack([cos_enc, sin_enc], dim=-1)
 
 
-def compute_frenet_frames(x, mask, eps=1e-10):
+@torch.jit.script
+def compute_frenet_frames(x, mask, eps: float = 1e-10):
     """
     Vectorized computation of Frenet-Serret frames.
     x: [b, n_res, 3]

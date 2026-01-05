@@ -13,7 +13,7 @@ from genie.utils.tensor_utils import (
 
 class InvariantPointAttention(nn.Module):
     # ... [Init method remains largely unchanged] ...
-    def __init__(self, c_s, c_z, c_hidden, no_heads, no_qk_points, no_v_points, inf=1e5, eps=1e-8):
+    def __init__(self, c_s, c_z, c_hidden, no_heads, no_qk_points, no_v_points, inf=1e5, eps=1e-8, use_checkpointing=True):
         super(InvariantPointAttention, self).__init__()
         # ... [Copy init code from uploaded file] ...
         self.c_s = c_s
@@ -24,6 +24,7 @@ class InvariantPointAttention(nn.Module):
         self.no_v_points = no_v_points
         self.inf = inf
         self.eps = eps
+        self.use_checkpointing = use_checkpointing
 
         hc = self.c_hidden * self.no_heads
         self.linear_q = Linear(self.c_s, hc)
@@ -101,7 +102,7 @@ class InvariantPointAttention(nn.Module):
 
     def forward(self, s, z, t, mask):
         # Optimization: Apply checkpointing
-        if self.training and s.requires_grad:
+        if self.training and s.requires_grad and self.use_checkpointing:
             # We must decompose 't' (AffineUtils object) into tensors to pass through checkpoint
             return checkpoint(self._run_ipa, s, z, t.trans, t.rots, mask, use_reentrant=False)
         else:

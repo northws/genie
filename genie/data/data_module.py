@@ -47,4 +47,13 @@ class SCOPeDataModule(LightningDataModule):
         print(f'Number of samples: {len(filepaths)}')
 
     def train_dataloader(self):
-        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers, pin_memory=True)
+        # Optimization: persistent_workers=True keeps the workers alive between epochs
+        # This avoids the overhead of recreating worker processes
+        return DataLoader(
+            self.dataset, 
+            batch_size=self.batch_size, 
+            shuffle=True, 
+            num_workers=self.num_workers, 
+            pin_memory=True,
+            persistent_workers=True if self.num_workers > 0 else False
+        )

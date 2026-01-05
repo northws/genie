@@ -76,8 +76,9 @@ def main(args):
         # Use 'bf16-mixed' if you are on A100/H100 for better stability.
         precision='bf16-mixed' if torch.cuda.is_bf16_supported() else '16-mixed',
         
-        # [Stability] Gradient Clipping to prevent NaN loss
-        gradient_clip_val=1.0,
+        # [Stability] Gradient Clipping disabled to allow Fused AdamW
+        # gradient_clip_val=1.0,
+        gradient_clip_val=None,
 
         deterministic=False,  # [Optimization] Changed to False for speed unless reproducibility is strictly required
         enable_progress_bar=True,  # Changed to True usually for UX, set False if running in strict pipeline

@@ -1,6 +1,6 @@
 import torch
 from tqdm import tqdm
-from torch.optim import Adam
+from torch.optim import Adam, AdamW
 from abc import ABC, abstractmethod
 from pytorch_lightning.core import LightningModule
 
@@ -19,12 +19,7 @@ class Diffusion(LightningModule, ABC):
 			n_timestep=self.config.diffusion['n_timestep']
 		)
 		
-		# Optimization: Compile the model for faster training on PyTorch 2.0+
-		# try:
-		# 	self.model = torch.compile(self.model)
-		# 	print("Model compiled with torch.compile()")
-		# except Exception as e:
-		# 	print(f"Could not compile model: {e}")
+
 
 		self.setup = False
 
@@ -103,7 +98,11 @@ class Diffusion(LightningModule, ABC):
 		return loss
 
 	def configure_optimizers(self):
-		return Adam(
+		# Optimization: Use Fused AdamW if available on GPU
+		# Note: Gradient Clipping must be disabled in Trainer for this to work
+		use_fused = torch.cuda.is_available()
+		return AdamW(
 			self.model.parameters(),
-			lr=self.config.optimization['lr']
+			lr=self.config.optimization['lr'],
+			fused=use_fused
 		)

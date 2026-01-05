@@ -1,4 +1,4 @@
-# Genie 项目优化与加速指南 (Optimization Guide)
+# Genie 项目复现与优化
 
 在复现文献的过程中针对 Genie 蛋白质设计模型加入了少量的优化措施，其中涵盖数据 I/O、训练速度、显存管理及 FlashIPA方法的集成。
 

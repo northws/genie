@@ -1,6 +1,6 @@
 # Genie 项目优化与加速指南 (Optimization Guide)
 
-本文档详细记录了针对 Genie 蛋白质设计模型的全方位优化措施，涵盖数据 I/O、训练速度、显存管理及 FlashIPA 集成。
+在复现文献的过程中针对 Genie 蛋白质设计模型加入了少量的优化措施，其中涵盖数据 I/O、训练速度、显存管理及 FlashIPA方法的集成。
 
 ## 1. 核心优化概览
 
@@ -14,29 +14,28 @@
 
 ---
 
-## 2. 详细优化说明
+## 2. 详细说明
 
-### 2.1 数据 I/O 优化 (Data I/O)
-*   **原理**: 原项目使用 `np.savetxt` 存储坐标，读取极慢。我们改为 `np.save` 存储二进制文件。
+### 2.1 数据 I/O 优化
+*   原项目使用 `np.savetxt` 存储坐标，读取极慢。我们在此处将其改为 `np.save` 存储二进制文件。
 *   **代码修改**: `scripts/generate_scope_coords.py` 和 `genie/utils/data_io.py`。
-*   **操作建议**: 运行 `python scripts/generate_scope_coords.py` 重新生成数据以生效。
 
-### 2.2 FlashIPA 集成 (FlashIPA Integration)
-*   **原理**: 引入 `flash_ipa` 库，利用 FlashAttention 加速 Invariant Point Attention (IPA) 计算。
-*   **智能切换**:
-    *   在 `genie/model/structure_net.py` 中实现了智能逻辑。
+### 2.2 FlashIPA 的集成
+*   引入 `flash_ipa` 库，利用 FlashAttention 加速 Invariant Point Attention (IPA) 计算。
+*   标准 IPA 计算非常昂贵，因为它需要计算所有残基对之间的相互作用，计算复杂度和显存占用通常是 $O (N^{2})$（N 为序列长度）。FlashIPA使用了 Tiling（分块） 技术，避免了显存中存储巨大的 $N×N$ 注意力矩阵。并引入了 z_factor（低秩分解），将原本庞大的成对特征表示进行压缩，大幅减少显存占用。
+*   **针对序列长度选取**由于在FlashIPA中序列长度小于512时GPU run time相比OrigIPA更长:
+    *   在 `genie/model/structure_net.py` 中加入了对输入序列的长度判断。
     *   当序列长度 `max_n_res <= 512` 时，自动**关闭** FlashIPA 以避免 Kernel 启动开销（此时标准实现更快）。
     *   当序列长度 `max_n_res > 512` 时，自动**开启** FlashIPA 以节省显存并加速。
-*   **配置**: 在 `config.yaml` 中设置 `useFlashIPA: True` 即可启用此智能逻辑。
+*   **使用**: 在 `config.yaml` 中设置 `useFlashIPA: True` 即可启用此智能逻辑。
 
-### 2.3 Transform 模块加速 (PairTransformNet Speedup)
-*   **原理**: `PairTransformNet` 中的三角形更新 ($O(N^3)$) 默认开启了梯度检查点 (`checkpoint`)，导致反向传播时重复计算。
-*   **优化**: 引入 `useGradientCheckpointing` 配置。
-    *   **默认 (False)**: 关闭检查点，**消除重计算，训练显著加速**（适用于 N=128/256）。
+### 2.3 Transform 模块加速 
+*    `PairTransformNet` 中的三角形更新 ($O(N^3)$) 默认开启了梯度检查点 (`checkpoint`)，导致反向传播时重复计算。故引入 `useGradientCheckpointing` 配置。
+*    现在更改为
+    *   **默认 (False)**: 关闭检查点，**消除重计算，训练显著加速**（适用于 $N=128&256$）。
     *   **开启 (True)**: 节省显存，但速度较慢（适用于超长序列 N > 512 且显存不足时）。
-*   **配置**: 在 `config.yaml` 中添加 `useGradientCheckpointing: False` (默认即为 False)。
 
-### 2.4 训练环境优化 (Training Environment)
+### 2.4 训练环境优化
 *   **Fused Adam**: 自动检测 GPU 环境并启用 `fused=True`，加速参数更新。
 *   **cuDNN Benchmark**: 启用 `torch.backends.cudnn.benchmark = True`，自动寻找最优卷积算法。
 *   **混合精度**: 保持 `precision='16-mixed'`，利用 Tensor Cores。
@@ -44,15 +43,15 @@
 
 ---
 
-## 3. 配置文件示例 (config.yaml)
+## 3. 配置文件示例 
 
 推荐的配置如下（针对 N=128 的标准训练）：
 
-```yaml
+```config
 name: final_optimized
 numEpoches: 500
 batchSize: 8
-maximumNumResidues: 128  # 短序列，FlashIPA 会自动休眠
+maximumNumResidues: 128  # 短序列，FlashIPA 会自动关闭   
 dataDirectory: data
 datasetNames: scope
 templateType: v1
@@ -62,13 +61,11 @@ logEverySteps: 50
 checkpointEveryEpoches: 50
 learningRate: 2e-4
 useFlashIPA: True        # 保持开启，由代码自动判断是否介入
-useGradientCheckpointing: False # 关键：关闭以获得最大速度
+useGradientCheckpointing: False # 关闭以获得最大速度，开启能节省显存
 numWorkers: 8            # 根据 CPU 核心数调整
 ```
 
 ## 4. 常见问题
 
-*   **Q: 为什么我看不到 FlashIPA 启动日志？**
-    *   A: 如果您的 `maximumNumResidues` <= 512，系统会打印一条 `Info` 提示并回退到标准实现，这是为了保证速度。
-*   **Q: 显存不够了怎么办？**
-    *   A: 将 `useGradientCheckpointing` 设为 `True`，或者减小 `batchSize`。
+*   **Q: 如何查看 FlashIPA 是否启动？**
+    *   A: 如果 `maximumNumResidues` <= 512，我们在这里设置了一个 `Info` 提示并回退到标准实现，如果未显示info且在config文件中设置useFlashIPA: True，则FlashIPA默认开启。

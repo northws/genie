@@ -40,7 +40,6 @@
 *   **混合精度**: 保持 `precision='16-mixed'`，利用 Tensor Cores。
 *   **显存碎片**: 设置 `PYTORCH_ALLOC_CONF=expandable_segments:True` 减少 OOM 风险。
 
-### 2.5
 ---
 
 ## 3. 配置文件示例 

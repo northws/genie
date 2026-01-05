@@ -128,3 +128,12 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+.idea/
+.vscode/
+data/
+runs/
+genie/runs/
+genie/wandb/
+wandb/
+flash_ipa_temp/

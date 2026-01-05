@@ -3,10 +3,12 @@ import glob
 import torch
 import numpy as np
 import pickle  # Optimization: For caching
+import pandas as pd # Optimization: Faster CSV reading
 
 
 def load_coord(filepath):
-    return np.loadtxt(filepath, delimiter=',')
+    # Optimization: Use pandas for faster CSV reading
+    return pd.read_csv(filepath, header=None).values
 
 
 def load_classes(filepath):

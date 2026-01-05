@@ -18,6 +18,13 @@ class Diffusion(LightningModule, ABC):
 			**self.config.model,
 			n_timestep=self.config.diffusion['n_timestep']
 		)
+		
+		# Optimization: Compile the model for faster training on PyTorch 2.0+
+		try:
+			self.model = torch.compile(self.model)
+			print("Model compiled with torch.compile()")
+		except Exception as e:
+			print(f"Could not compile model: {e}")
 
 		self.setup = False
 

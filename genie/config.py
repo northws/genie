@@ -62,7 +62,8 @@ class Config:
 			'n_v_point':                      int(config.get('ipaNumVPoints',                           8)),
 			'ipa_dropout':                  float(config.get('ipaDropout',                              0.1)),
 			'n_structure_transition_layer':   int(config.get('numStructureTransitionLayers',            1)),
-			'structure_transition_dropout': float(config.get('structureTransitionDropout',              0.1))
+			'structure_transition_dropout': float(config.get('structureTransitionDropout',              0.1)),
+			'use_flash_ipa':                      config.get('useFlashIPA',                             True)
 
 		}
 
@@ -70,6 +71,7 @@ class Config:
 			'seed':                     int(config.get('seed',                   100)),
 			'n_epoch':                  int(config.get('numEpoches',             1)),
 			'batch_size':               int(config.get('batchSize',              32)),
+			'num_workers':              int(config.get('numWorkers',             4)),
 			'log_every_n_step':         int(config.get('logEverySteps',          1000)),
 			'checkpoint_every_n_epoch': int(config.get('checkpointEveryEpoches', 500)),
 		}

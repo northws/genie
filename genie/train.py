@@ -46,7 +46,7 @@ def main(args):
 
     # data module
     # Passing config.io as kwargs, assuming it contains data paths
-    dm = SCOPeDataModule(**config.io, batch_size=config.training['batch_size'])
+    dm = SCOPeDataModule(**config.io, batch_size=config.training['batch_size'], num_workers=config.training['num_workers'])
 
     # model
     model = Genie(config)

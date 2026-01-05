@@ -14,7 +14,67 @@ from genie.utils.tensor_utils import (
 
 
 # ... [Keep initializers: _calculate_fan, trunc_normal_init_, etc. unchanged] ...
-# ... [Keep class Linear unchanged] ...
+def _calculate_fan(linear_weight_shape, fan_mode):
+    fan_in, fan_out = linear_weight_shape
+    return fan_in if fan_mode == 'fan_in' else fan_out
+
+
+def trunc_normal_init_(tensor, mean=0., std=1., a=-2., b=2.):
+    # From https://github.com/aqlaboratory/openfold/blob/main/openfold/model/primitives.py
+    def norm_cdf(x):
+        return (1. + math.erf(x / math.sqrt(2.))) / 2.
+
+    with torch.no_grad():
+        l = norm_cdf((a - mean) / std)
+        u = norm_cdf((b - mean) / std)
+        tensor.uniform_(2 * l - 1, 2 * u - 1)
+        tensor.erfinv_()
+        tensor.mul_(std * math.sqrt(2.))
+        tensor.add_(mean)
+        tensor.clamp_(min=a, max=b)
+        return tensor
+
+
+def ipa_point_weights_init_(tensor):
+    trunc_normal_init_(tensor, std=0.1, a=-0.2, b=0.2)
+
+
+class Linear(nn.Linear):
+    """
+    A Linear layer with built-in initialization options.
+    """
+    def __init__(self, in_features: int, out_features: int, bias: bool = True, init: str = 'default'):
+        self.init = init
+        super().__init__(in_features, out_features, bias=bias)
+
+    def reset_parameters(self):
+        if self.init == 'default':
+            super().reset_parameters()
+        elif self.init == 'relu':
+            nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+            if self.bias is not None:
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+                bound = 1 / math.sqrt(fan_in)
+                nn.init.uniform_(self.bias, -bound, bound)
+        elif self.init == 'glorot':
+            nn.init.xavier_uniform_(self.weight)
+            if self.bias is not None:
+                nn.init.zeros_(self.bias)
+        elif self.init == 'gating':
+            nn.init.zeros_(self.weight)
+            if self.bias is not None:
+                nn.init.ones_(self.bias)
+        elif self.init == 'final':
+            nn.init.zeros_(self.weight)
+            if self.bias is not None:
+                nn.init.zeros_(self.bias)
+        elif self.init == 'normal':
+            nn.init.normal_(self.weight, mean=0.0, std=0.02)
+            if self.bias is not None:
+                nn.init.zeros_(self.bias)
+        else:
+            raise ValueError(f"Unknown initialization: {self.init}")
+
 
 class Attention(nn.Module):
     """ 

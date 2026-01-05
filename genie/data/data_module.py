@@ -10,7 +10,7 @@ from genie.utils.data_io import load_filepaths
 class SCOPeDataModule(LightningDataModule):
 
     def __init__(self, name, log_dir, data_dir, max_n_res, min_n_res, dataset_names, dataset_size, dataset_classes,
-                 batch_size):
+                 batch_size, num_workers=4):
         super(SCOPeDataModule, self).__init__()
 
         # Optimization Note:
@@ -26,6 +26,7 @@ class SCOPeDataModule(LightningDataModule):
         self.dataset_size = dataset_size
         self.dataset_classes = dataset_classes
         self.batch_size = batch_size
+        self.num_workers = num_workers
 
     def setup(self, stage=None):
 
@@ -46,4 +47,4 @@ class SCOPeDataModule(LightningDataModule):
         print(f'Number of samples: {len(filepaths)}')
 
     def train_dataloader(self):
-        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True)
+        return DataLoader(self.dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers, pin_memory=True)

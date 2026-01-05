@@ -1,13 +1,12 @@
 # Adapted from OpenFold
 import torch
-from torch.cuda.amp import autocast
 
 
 # Optimization: Force FP32 for geometric stability
 # Even when training in BF16, rotation matrix multiplication must remain high precision
 # to prevent det(R) from drifting away from 1.0
 
-@autocast(enabled=False)
+@torch.amp.autocast('cuda', enabled=False)
 def rot_matmul(a, b):
     # Cast inputs to float32 explicitly
     a = a.float()
@@ -32,7 +31,7 @@ def rot_matmul(a, b):
     return torch.stack([row_1, row_2, row_3], dim=-2)
 
 
-@autocast(enabled=False)
+@torch.amp.autocast('cuda', enabled=False)
 def rot_vec_mul(r, t):
     r = r.float()
     t = t.float()

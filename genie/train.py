@@ -1,5 +1,6 @@
 import wandb
 import argparse
+import torch  # [Added] Needed for matmul precision settings
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.trainer import Trainer, seed_everything
 from pytorch_lightning.loggers import WandbLogger, TensorBoardLogger
@@ -10,59 +11,76 @@ from genie.diffusion.genie import Genie
 
 
 def main(args):
+    # [Optimization] Enable TF32 on Ampere+ GPUs (A100, RTX3090, etc.)
+    # 'medium' or 'high' enables Tensor Cores for float32 matrix multiplications
+    torch.set_float32_matmul_precision('medium')
 
-	# configuration
-	config = Config(filename=args.config)
+    # configuration
+    config = Config(filename=args.config)
 
-	# devices
-	gpus = [int(elt) for elt in args.gpus.split(',')] if args.gpus is not None else None
+    # devices logic
+    if args.gpus is not None:
+        gpus = [int(elt) for elt in args.gpus.split(',')]
+        accelerator = 'gpu'
+    else:
+        gpus = 'auto'
+        accelerator = 'auto'
 
-	# logger
-	tb_logger = TensorBoardLogger(
-		save_dir=config.io['log_dir'],
-		name=config.io['name']
-	)
-	wandb_logger = WandbLogger(project=config.io['name'])
+    # logger
+    tb_logger = TensorBoardLogger(
+        save_dir=config.io['log_dir'],
+        name=config.io['name']
+    )
+    wandb_logger = WandbLogger(project=config.io['name'], name=config.io['name'])
 
-	# checkpoint callback
-	checkpoint_callback = ModelCheckpoint(
-		every_n_epochs=config.training['checkpoint_every_n_epoch'],
-		filename='{epoch}',
-		save_top_k=-1
-	)
+    # checkpoint callback
+    checkpoint_callback = ModelCheckpoint(
+        every_n_epochs=config.training['checkpoint_every_n_epoch'],
+        dirpath=f"{config.io['log_dir']}/{config.io['name']}/checkpoints",  # Explicit path often helps
+        filename='{epoch}-{step}',
+        save_top_k=-1
+    )
 
-	# seed
-	seed_everything(config.training['seed'], workers=True)
+    # seed
+    seed_everything(config.training['seed'], workers=True)
 
-	# data module
-	dm = SCOPeDataModule(**config.io, batch_size=config.training['batch_size'])
+    # data module
+    # Passing config.io as kwargs, assuming it contains data paths
+    dm = SCOPeDataModule(**config.io, batch_size=config.training['batch_size'])
 
-	# model
-	model = Genie(config)
+    # model
+    model = Genie(config)
 
-	# trainer
-	trainer = Trainer(
-		gpus=gpus,
-		logger=[tb_logger, wandb_logger],
-		strategy='ddp',
-		deterministic=True,
-		enable_progress_bar=False,
-		log_every_n_steps=config.training['log_every_n_step'],
-		max_epochs=config.training['n_epoch'],
-		callbacks=[checkpoint_callback]
-	)
+    # trainer
+    trainer = Trainer(
+        accelerator=accelerator,  # [Updated] Explicit accelerator definition
+        devices=gpus,  # [Updated] Replaces the old 'gpus' arg
+        logger=[tb_logger, wandb_logger],
+        strategy='ddp_find_unused_parameters_true',
+        # 'ddp' is fine, usually explicitly handling unused params is safer for complex models
 
-	# run
-	trainer.fit(model, dm)
+        # [Optimization] Tensor Core Support
+        # '16-mixed' uses FP16 for matmul (Tensor Cores) and FP32 for stability.
+        # Use 'bf16-mixed' if you are on A100/H100 for better stability.
+        precision='16-mixed',
+
+        deterministic=False,  # [Optimization] Changed to False for speed unless reproducibility is strictly required
+        enable_progress_bar=True,  # Changed to True usually for UX, set False if running in strict pipeline
+        log_every_n_steps=config.training['log_every_n_step'],
+        max_epochs=config.training['n_epoch'],
+        callbacks=[checkpoint_callback]
+    )
+
+    # run
+    trainer.fit(model, dm)
 
 
 if __name__ == '__main__':
+    # parse arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-g', '--gpus', type=str, help='GPU devices to use (e.g., "0,1")')
+    parser.add_argument('-c', '--config', type=str, help='Path for configuration file', required=True)
+    args = parser.parse_args()
 
-	# parse arguments
-	parser = argparse.ArgumentParser()
-	parser.add_argument('-g', '--gpus', type=str, help='GPU devices to use')
-	parser.add_argument('-c', '--config', type=str, help='Path for configuration file', required=True)
-	args = parser.parse_args()
-
-	# run
-	main(args)
+    # run
+    main(args)

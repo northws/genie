@@ -60,7 +60,9 @@ class Diffusion(LightningModule, ABC):
 	def loss_fn(self, tnoise, ts, s):
 		raise NotImplemented
 
-	def p_sample_loop(self, mask, noise_scale, verbose=True):
+	# Optimization: Set default noise_scale to 0.4 based on Genie 2 findings [cite: 110]
+	# Lower noise scale (e.g. 0.4) improves designability (scTM > 0.5).
+	def p_sample_loop(self, mask, noise_scale=0.4, verbose=True):
 		if not self.setup:
 			self.setup_schedule()
 			self.setup = True

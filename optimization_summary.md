@@ -35,11 +35,12 @@
     *   **开启 (True)**: 节省显存，但速度较慢（适用于超长序列 N > 512 且显存不足时）。
 
 ### 2.4 训练环境优化
-*   **Fused Adam**: 自动检测 GPU 环境并启用 `fused=True`，加速参数更新。
+*   **Fused AdamW**: 自动检测 GPU 环境并启用 `fused=True`。相比标准实现，它将优化器步骤合并为单个 CUDA 内核，减少内存访问开销，显著加速参数更新。
 *   **cuDNN Benchmark**: 启用 `torch.backends.cudnn.benchmark = True`，自动寻找最优卷积算法。
 *   **混合精度**: 保持 `precision='16-mixed'`，利用 Tensor Cores。
 *   **显存碎片**: 设置 `PYTORCH_ALLOC_CONF=expandable_segments:True` 减少 OOM 风险。
 
+### 2.5
 ---
 
 ## 3. 配置文件示例 

@@ -23,9 +23,10 @@ def main(args):
 	outdir = os.path.join(outdir, 'epoch_{}'.format(model.epoch))
 	if os.path.exists(outdir):
 		print('Samples existed!')
-		sys.exit(0)
+		# sys.exit(0) # Removed exit to allow overwriting or adding to existing samples
 	else:
 		os.mkdir(outdir)
+
 
 	# sanity check
 	min_length = 50

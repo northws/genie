@@ -88,7 +88,7 @@ def main(args):
     )
 
     # run
-    trainer.fit(model, dm)
+    trainer.fit(model, dm, ckpt_path=args.resume)
 
 
 if __name__ == '__main__':
@@ -96,6 +96,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-g', '--gpus', type=str, help='GPU devices to use (e.g., "0,1")')
     parser.add_argument('-c', '--config', type=str, help='Path for configuration file', required=True)
+    parser.add_argument('-r', '--resume', type=str, help='Path for checkpoint file to resume from')
     args = parser.parse_args()
 
     # run

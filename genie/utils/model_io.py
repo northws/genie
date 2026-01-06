@@ -33,14 +33,8 @@ def load_model(rootdir, name, version=None, epoch=None):
 
 	# load configuration and create default model
 	basedir = os.path.join(rootdir, name)
-	# config_filepath = os.path.join(basedir, 'configuration') # Original
-	# Config might be just a yaml file you used for training, usually not saved as 'configuration' binary unless custom
-	# For now, let's assume we can re-use the training config or there is a file. 
-	# BUT looking at train.py, it loads config from args and doesn't explicitly save a 'configuration' file in the run dir 
-	# the standard way. However, let's look at how Genie is initialized.
-    # It seems your workspace has runs/config.yaml. Let's try to find a config.
-	
-	config = Config(os.path.join('genie', 'runs', 'config.yaml')) # Fallback to default config path we saw earlier
+	config_filepath = os.path.join(basedir, 'configuration')
+	config = Config(config_filepath)
 
 
 

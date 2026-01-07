@@ -1,0 +1,296 @@
+import os
+import sys
+import glob
+import torch
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
+import subprocess
+import re
+import copy
+from multiprocessing import Pool
+import functools
+import multiprocessing
+
+# ==========================================
+# CONFIGURATION
+# ==========================================
+RUN_DIR = "/root/autodl-tmp/genie/runs/final_final-v0/version_3/samples/epoch_499/evaluations"
+RAW_DESIGN_DIR = os.path.join(RUN_DIR, "designs")
+REF_DB_DIR = "/root/autodl-tmp/genie/data/pdbstyle-2.08"
+OUTPUT_CSV = os.path.join(RUN_DIR, "novelty_hybrid.csv")
+TMALIGN_EXEC = "/root/autodl-tmp/genie/packages/TMscore/TMalign"
+INFO_CSV = os.path.join(RUN_DIR, "info.csv")
+
+# Constants
+K_NEIGHBORS = 30 
+BATCH_SIZE = 25 
+TOP_K_SCREEN = 50 
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# --- Import ProteinMPNN ---
+try:
+    from protein_mpnn_utils import parse_PDB, StructureDatasetPDB, ProteinMPNN, cat_neighbors_nodes
+except ImportError:
+    try:
+        sys.path.append("/root/autodl-tmp/genie")
+        from protein_mpnn_utils import parse_PDB, StructureDatasetPDB, ProteinMPNN, cat_neighbors_nodes
+    except ImportError:
+        print("Error: protein_mpnn_utils.py not found.")
+        sys.exit(1)
+
+# Helper for gather_nodes if not imported
+def gather_nodes(nodes, neighbor_idx):
+    neighbors_flat = neighbor_idx.view((neighbor_idx.shape[0], -1))
+    neighbors_flat = neighbors_flat.unsqueeze(-1).expand(-1, -1, nodes.size(2))
+    neighbor_features = torch.gather(nodes, 1, neighbors_flat)
+    neighbor_features = neighbor_features.view(list(neighbor_idx.shape)[:3] + [-1])
+    return neighbor_features
+
+def get_mpnn_model():
+    weight_path = "/root/autodl-tmp/genie/packages/ProteinMPNN/ca_model_weights/v_48_020.pt"
+    if not os.path.exists(weight_path):
+        print(f"Error: Weights not found at {weight_path}")
+        sys.exit(1)
+    checkpoint = torch.load(weight_path, map_location=DEVICE)
+    model = ProteinMPNN(
+        num_letters=21, node_features=128, edge_features=128, hidden_dim=128, 
+        num_encoder_layers=3, num_decoder_layers=3, augment_eps=0.0, k_neighbors=checkpoint['num_edges'],
+        ca_only=True
+    ) 
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.to(DEVICE)
+    model.eval()
+    return model
+
+def compute_embeddings(model, pdb_files):
+    all_embeddings = []
+    valid_files_out = []
+    
+    chunks = [pdb_files[i:i + BATCH_SIZE] for i in range(0, len(pdb_files), BATCH_SIZE)]
+    
+    with torch.no_grad():
+        for chunk in tqdm(chunks, desc="Embedding Batch"):
+            pdb_dicts = []
+            for p_file in chunk:
+                try:
+                    d_list = parse_PDB(p_file, input_chain_list=['A'], ca_only=True)
+                    for d in d_list:
+                        d['full_path'] = p_file # Attach full path
+                    pdb_dicts.extend(d_list)
+                except:
+                    pass
+            
+            if not pdb_dicts: continue
+            
+            batch_len = len(pdb_dicts)
+            lengths = [len(p['seq']) for p in pdb_dicts]
+            max_len = max(lengths)
+            
+            # CA only: X shape [B, L, 3]
+            X = torch.zeros(batch_len, max_len, 3, device=DEVICE)
+            mask = torch.zeros(batch_len, max_len, device=DEVICE)
+            residue_idx = torch.zeros(batch_len, max_len, dtype=torch.long, device=DEVICE)
+            chain_encoding_all = torch.zeros(batch_len, max_len, dtype=torch.long, device=DEVICE)
+            
+            valid_indices = []
+            valid_files_temp = [] 
+            
+            for i, p in enumerate(pdb_dicts):
+                l = lengths[i]
+                
+                # Check for coords
+                keys = list(p.keys())
+                coord_keys = [k for k in keys if k.startswith('coords_')]
+                if not coord_keys: continue
+                
+                # Take first chain
+                key = coord_keys[0] 
+                chain_id = key.split('_')[-1]
+                coords_dict = p[key] 
+                
+                try:
+                    ca_key = f"CA_chain_{chain_id}"
+                    
+                    if ca_key not in coords_dict: continue 
+                    
+                    # parse_PDB with ca_only=True returns [L, 1, 3] for each atom type list?
+                    # Let's check parse_PDB_biounits again.
+                    # It returns (length, atoms, 3). If atoms=['CA'], it's [L, 1, 3].
+                    # In parse_PDB: coords_dict_chain['CA_chain_'+letter]=xyz.tolist()
+                    # So it is a list of lists.
+                    
+                    CA = np.array(coords_dict[ca_key]) # Should be [L, 1, 3]
+                    if CA.ndim == 3 and CA.shape[1] == 1:
+                        CA = CA[:, 0, :] # [L, 3]
+                    
+                except Exception:
+                    continue
+
+                if len(CA) == 0: continue
+
+                c = torch.tensor(CA, dtype=torch.float32, device=DEVICE) 
+                
+                actual_l = c.shape[0]
+                if actual_l > max_len: 
+                     c = c[:max_len]
+                     actual_l = max_len
+                
+                X[i, :actual_l] = c
+                mask[i, :actual_l] = 1.0
+                residue_idx[i, :actual_l] = torch.arange(actual_l, device=DEVICE)
+                
+                valid_indices.append(i)
+                valid_files_temp.append(p.get('full_path', 'unknown')) 
+
+            if not valid_indices: continue
+            
+            X = X[valid_indices]
+            mask = mask[valid_indices]
+            residue_idx = residue_idx[valid_indices]
+            chain_encoding_all = chain_encoding_all[valid_indices]
+
+            # CRITICAL FIX: Handle NaNs
+            X = torch.nan_to_num(X, nan=0.0)
+
+            try:
+                # 1. Features
+                E, E_idx = model.features(X, mask, residue_idx, chain_encoding_all)
+                
+                # 2. Initial h_V, h_E
+                h_V = torch.zeros((E.shape[0], E.shape[1], E.shape[-1]), device=DEVICE)
+                h_E = model.W_e(E)
+                
+                # 3. Encoder Layers
+                mask_attend = gather_nodes(mask.unsqueeze(-1),  E_idx).squeeze(-1)
+                mask_attend = mask.unsqueeze(-1) * mask_attend
+                
+                for layer in model.encoder_layers:
+                    h_V, h_E = layer(h_V, h_E, E_idx, mask, mask_attend)
+                
+                # Global Mean Pooling
+                h_V_masked = h_V * mask.unsqueeze(-1)
+                div = mask.sum(dim=1, keepdim=True)
+                div = torch.clamp(div, min=1.0)
+                emb = h_V_masked.sum(dim=1) / div
+                
+                all_embeddings.append(emb.cpu())
+                valid_files_out.extend(valid_files_temp)
+                
+            except Exception as e:
+                print(f"Skipping batch due to error: {e}")
+                continue
+
+    if not all_embeddings: return None, []
+    return torch.cat(all_embeddings, dim=0), valid_files_out
+
+def process_design(i, design_paths, ref_paths_all, candidate_indices_list):
+    d_path = design_paths[i]
+    domain = os.path.basename(d_path).replace(".pdb", "")
+    
+    candidate_indices = candidate_indices_list[i]
+    if len(candidate_indices) == 0:
+         return f"{domain},0.0,\n"
+
+    candidate_refs = [ref_paths_all[idx] for idx in candidate_indices]
+    
+    max_tm = 0.0
+    best_ref = ""
+    
+    # Run TMalign
+    for ref_p in candidate_refs:
+        cmd = [TMALIGN_EXEC, d_path, ref_p]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            match = re.search(r'TM-score=\s*([\d\.]+)\s*\(if normalized by length of Chain_1', res.stdout)
+            if match:
+                tm = float(match.group(1))
+                if tm > max_tm:
+                    max_tm = tm
+                    best_ref = ref_p
+        except:
+            continue
+    return f"{domain},{max_tm},{best_ref}\n"
+
+def main():
+    print("Initializing Hybrid GPU Screening...")
+    
+    # 0. Load Model
+    model = get_mpnn_model()
+    
+    # 1. Load References
+    print("Indexing Reference Database...")
+    refs = glob.glob(os.path.join(REF_DB_DIR, "**/*.ent"), recursive=True) 
+    
+    if not refs:
+         refs = glob.glob(os.path.join(REF_DB_DIR, "**/*"), recursive=True)
+         refs = [f for f in refs if os.path.isfile(f) and not f.endswith('DIR')]
+    
+    # Filter only .ent or .pdb
+    refs = [r for r in refs if r.endswith('.ent') or r.endswith('.pdb')]
+    
+    print(f"Found {len(refs)} reference files. Embedding References uses GPU, this is fast.")
+    ref_embs, ref_names = compute_embeddings(model, refs)
+    if ref_embs is None: 
+        print("Reference embedding failed.")
+        return
+    
+    ref_embs = torch.nn.functional.normalize(ref_embs, p=2, dim=1).to(DEVICE)
+    
+    # 2. Load Designs (All)
+    print("Loading all designs from directory (Processing all samples)...")
+    designs = glob.glob(os.path.join(RAW_DESIGN_DIR, "*.pdb"))
+    print(f"Processing all {len(designs)} designs.")
+        
+    print(f"Computing Embeddings for {len(designs)} designs...")
+    design_embs, design_names = compute_embeddings(model, designs)
+    if design_embs is None: 
+        print("No designs embedded successfully.")
+        return
+    
+    design_embs = torch.nn.functional.normalize(design_embs, p=2, dim=1).to(DEVICE)
+    
+    # 3. Compute Similarity Matrix
+    print("Computing Similarity Matrix...")
+    sim_matrix = torch.matmul(design_embs, ref_embs.T)
+    # Check stats
+    print(f"DEBUG Stats: Sim Mean={sim_matrix.mean().item()} Std={sim_matrix.std().item()}")
+    
+    # 4. Top-K Selection
+    print(f"Selecting Top-{TOP_K_SCREEN} candidates...")
+    top_vals, top_idxs = torch.topk(sim_matrix, k=TOP_K_SCREEN, dim=1)
+    top_idxs = top_idxs.cpu().numpy()
+    
+    # Init CSV
+    with open(OUTPUT_CSV, 'w') as f:
+        f.write("domain,max_tm_to_pdb,closest_pdb_path\n")
+            
+    # Parallelize TM-align using multiprocessing
+    num_designs = len(design_names)
+    indices = list(range(num_designs))
+    
+    worker = functools.partial(process_design, design_paths=design_names, ref_paths_all=ref_names, candidate_indices_list=top_idxs)
+    
+    N_WORKERS = 20
+    print(f"Running TMalign verification with {N_WORKERS} workers...")
+    
+    results = []
+    with Pool(N_WORKERS) as p:
+        for res_str in tqdm(p.imap_unordered(worker, indices), total=num_designs):
+            results.append(res_str)
+            if len(results) >= 50:
+                with open(OUTPUT_CSV, 'a') as f:
+                     for line in results: f.write(line)
+                results = []
+
+    if results:
+        with open(OUTPUT_CSV, 'a') as f:
+            for line in results:
+                f.write(line)
+    
+    print(f"Done. Results saved to {OUTPUT_CSV}")
+
+if __name__ == "__main__":
+    multiprocessing.set_start_method('spawn') 
+    main()

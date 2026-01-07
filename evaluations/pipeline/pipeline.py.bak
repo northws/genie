@@ -40,8 +40,7 @@ class Pipeline:
 
 		assert os.path.exists(input_dir), 'Missing input directory'
 		coords_dir = os.path.join(input_dir, 'coords')
-		if not os.path.exists(coords_dir):
-			coords_dir = input_dir
+		assert os.path.exists(coords_dir), 'Missing coordinate directory'
 		assert not os.path.exists(output_dir), 'Output directory existed'
 		os.mkdir(output_dir)
 

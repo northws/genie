@@ -71,13 +71,24 @@ Configuration files define model hyperparameters and training settings. See `gen
 You can visualize the generated structures (Saved as `.npy` coordinate files) using the provided scripts.
 
 ```bash
-python visualize.py
+python evaluations/visualize.py
 ```
-(Note: You might need to modify `visualize.py` or use `visualize_protein.py` to point to your specific output file).
+(Note: You might need to modify `evaluations/visualize.py` or use `evaluations/visualize_protein.py` to point to your specific output file).
 
 ### 4. Analysis and Evaluation
 
 This repository includes scripts for evaluating the novelty of generated designs and visualizing the design space.
+
+#### Quality Evaluation (scTM & pLDDT)
+
+To assess the designability of the generated backbones, use the evaluation pipeline. This step runs ProteinMPNN (inverse folding) and ESMFold (folding) to calculate self-consistency TM-scores (scTM) and pLDDT.
+
+```bash
+python evaluations/pipeline/evaluate.py \
+    --input_dir runs/scope_l_128/version_0/samples/epoch_49999 \
+    --output_dir runs/scope_l_128/version_0/samples/epoch_49999/evaluations
+```
+This generates an `info.csv` file required for the plotting scripts.
 
 #### Novelty Evaluation
 
@@ -85,7 +96,7 @@ To calculate the novelty of generated designs (TM-score against a reference data
 
 *   **CPU Version (Exact, Brute-force):**
     ```bash
-    python Novelty_Evaluation_CPU.py \
+    python evaluations/Novelty_Evaluation_CPU.py \
         --input_dir runs/scope_l_128/version_0/samples/epoch_49999/evaluations \
         --ref_dir data/pdbstyle-2.08 \
         --num_workers 4
@@ -94,7 +105,7 @@ To calculate the novelty of generated designs (TM-score against a reference data
 *   **GPU Version (Hybrid, Fast Screening):**
     Uses ProteinMPNN embeddings to screen candidates before running TM-align.
     ```bash
-    python Novelty_Evaluation_GPU.py \
+    python evaluations/Novelty_Evaluation_GPU.py \
         --input_dir runs/scope_l_128/version_0/samples/epoch_49999/evaluations
     ```
 
@@ -103,7 +114,7 @@ To calculate the novelty of generated designs (TM-score against a reference data
 *   **Design Space MDS Plot:**
     Visualizes the distribution of generated samples using Multidimensional Scaling (MDS).
     ```bash
-    python plot_genie_mds_novelty.py \
+    python evaluations/plot_genie_mds_novelty.py \
         --input_dir runs/.../evaluations \
         --output_file mds_plot.png
     ```
@@ -111,7 +122,7 @@ To calculate the novelty of generated designs (TM-score against a reference data
 *   **General Analysis (Figure 2 Reproduction):**
     Plots pLDDT vs scTM, SSE distribution, and designability counts.
     ```bash
-    python plot_genie_analysis.py \
+    python evaluations/plot_genie_analysis.py \
         --input_dir runs/.../evaluations \
         --output_file analysis_plot.png
     ```

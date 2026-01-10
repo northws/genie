@@ -10,7 +10,7 @@ sns.set_theme(style="ticks")
 plt.rcParams['font.family'] = 'sans-serif'
 
 # Load data
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_RUN_DIR = os.path.join(BASE_DIR, "runs", "final_final-v0", "version_3", "samples", "epoch_499", "evaluations")
 
 parser = argparse.ArgumentParser(description="Plot Genie Analysis")

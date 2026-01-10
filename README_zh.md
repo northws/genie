@@ -71,13 +71,24 @@ python genie/train.py \
 你可以使用提供的脚本可视化生成的结构（保存为 `.npy` 坐标文件）。
 
 ```bash
-python visualize.py
+python evaluations/visualize.py
 ```
-（注意：你可能需要修改 `visualize.py` 或使用 `visualize_protein.py` 来指向你具体的输出文件）。
+（注意：你可能需要修改 `evaluations/visualize.py` 或使用 `evaluations/visualize_protein.py` 来指向你具体的输出文件）。
 
 ### 4. 分析与评估 (Analysis and Evaluation)
 
 本项目包含用于评估生成设计的创新性（Novelty）以及可视化设计空间的脚本。
+
+#### 质量评估 (Quality Evaluation)
+
+为了评估生成骨架的可设计性，请使用评估流程。此步骤运行 ProteinMPNN (逆折叠) 和 ESMFold (折叠) 来计算自洽 TM-score (scTM) 和 pLDDT。
+
+```bash
+python evaluations/pipeline/evaluate.py \
+    --input_dir runs/scope_l_128/version_0/samples/epoch_49999 \
+    --output_dir runs/scope_l_128/version_0/samples/epoch_49999/evaluations
+```
+这将生成绘图脚本所需的 `info.csv` 文件。
 
 #### 创新性评估 (Novelty Evaluation)
 
@@ -85,7 +96,7 @@ python visualize.py
 
 *   **CPU 版本 (精确，暴力搜索):**
     ```bash
-    python Novelty_Evaluation_CPU.py \
+    python evaluations/Novelty_Evaluation_CPU.py \
         --input_dir runs/scope_l_128/version_0/samples/epoch_49999/evaluations \
         --ref_dir data/pdbstyle-2.08 \
         --num_workers 4
@@ -94,7 +105,7 @@ python visualize.py
 *   **GPU 版本 (混合方法，快速筛选):**
     使用 ProteinMPNN 嵌入在运行 TM-align 之前对候选者进行筛选。
     ```bash
-    python Novelty_Evaluation_GPU.py \
+    python evaluations/Novelty_Evaluation_GPU.py \
         --input_dir runs/scope_l_128/version_0/samples/epoch_49999/evaluations
     ```
 
@@ -103,7 +114,7 @@ python visualize.py
 *   **设计空间 MDS 图:**
     使用多维缩放 (MDS) 可视化生成样本的分布。
     ```bash
-    python plot_genie_mds_novelty.py \
+    python evaluations/plot_genie_mds_novelty.py \
         --input_dir runs/.../evaluations \
         --output_file mds_plot.png
     ```
@@ -111,7 +122,7 @@ python visualize.py
 *   **综合分析 (复现论文图2):**
     绘制 pLDDT 与 scTM 的关系图、SSE 分布以及可设计性统计。
     ```bash
-    python plot_genie_analysis.py \
+    python evaluations/plot_genie_analysis.py \
         --input_dir runs/.../evaluations \
         --output_file analysis_plot.png
     ```

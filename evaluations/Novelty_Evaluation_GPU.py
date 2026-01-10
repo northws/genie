@@ -14,7 +14,7 @@ import multiprocessing
 import argparse
 
 # --- Configuration ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUN_DIR = os.path.join(BASE_DIR, "runs", "final_final-v0", "version_3", "samples", "epoch_499", "evaluations")
 RAW_DESIGN_DIR = os.path.join(RUN_DIR, "designs")
 REF_DB_DIR = os.path.join(BASE_DIR, "data", "pdbstyle-2.08")
@@ -49,7 +49,7 @@ def gather_nodes(nodes, neighbor_idx):
     return neighbor_features
 
 def get_mpnn_model():
-    weight_path = os.path.join(os.path.dirname(__file__), "packages", "ProteinMPNN", "ca_model_weights", "v_48_020.pt")
+    weight_path = os.path.join(BASE_DIR, "packages", "ProteinMPNN", "ca_model_weights", "v_48_020.pt")
     if not os.path.exists(weight_path):
         print(f"Error: Weights not found at {weight_path}")
         sys.exit(1)

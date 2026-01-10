@@ -11,15 +11,15 @@ import copy
 from multiprocessing import Pool
 import functools
 import multiprocessing
+import argparse
 
-# ==========================================
-# CONFIGURATION
-# ==========================================
-RUN_DIR = "/root/autodl-tmp/genie/runs/final_final-v0/version_3/samples/epoch_499/evaluations"
+# --- Configuration ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+RUN_DIR = os.path.join(BASE_DIR, "runs", "final_final-v0", "version_3", "samples", "epoch_499", "evaluations")
 RAW_DESIGN_DIR = os.path.join(RUN_DIR, "designs")
-REF_DB_DIR = "/root/autodl-tmp/genie/data/pdbstyle-2.08"
+REF_DB_DIR = os.path.join(BASE_DIR, "data", "pdbstyle-2.08")
 OUTPUT_CSV = os.path.join(RUN_DIR, "novelty_hybrid.csv")
-TMALIGN_EXEC = "/root/autodl-tmp/genie/packages/TMscore/TMalign"
+TMALIGN_EXEC = os.path.join(BASE_DIR, "packages", "TMscore", "TMalign")
 INFO_CSV = os.path.join(RUN_DIR, "info.csv")
 
 # Constants
@@ -29,12 +29,12 @@ TOP_K_SCREEN = 50
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# --- Import ProteinMPNN ---
+# Import ProteinMPNN
 try:
     from protein_mpnn_utils import parse_PDB, StructureDatasetPDB, ProteinMPNN, cat_neighbors_nodes
 except ImportError:
     try:
-        sys.path.append("/root/autodl-tmp/genie")
+        sys.path.append(BASE_DIR)
         from protein_mpnn_utils import parse_PDB, StructureDatasetPDB, ProteinMPNN, cat_neighbors_nodes
     except ImportError:
         print("Error: protein_mpnn_utils.py not found.")
@@ -49,7 +49,7 @@ def gather_nodes(nodes, neighbor_idx):
     return neighbor_features
 
 def get_mpnn_model():
-    weight_path = "/root/autodl-tmp/genie/packages/ProteinMPNN/ca_model_weights/v_48_020.pt"
+    weight_path = os.path.join(os.path.dirname(__file__), "packages", "ProteinMPNN", "ca_model_weights", "v_48_020.pt")
     if not os.path.exists(weight_path):
         print(f"Error: Weights not found at {weight_path}")
         sys.exit(1)
@@ -88,7 +88,6 @@ def compute_embeddings(model, pdb_files):
             lengths = [len(p['seq']) for p in pdb_dicts]
             max_len = max(lengths)
             
-            # CA only: X shape [B, L, 3]
             X = torch.zeros(batch_len, max_len, 3, device=DEVICE)
             mask = torch.zeros(batch_len, max_len, device=DEVICE)
             residue_idx = torch.zeros(batch_len, max_len, dtype=torch.long, device=DEVICE)
@@ -114,12 +113,6 @@ def compute_embeddings(model, pdb_files):
                     ca_key = f"CA_chain_{chain_id}"
                     
                     if ca_key not in coords_dict: continue 
-                    
-                    # parse_PDB with ca_only=True returns [L, 1, 3] for each atom type list?
-                    # Let's check parse_PDB_biounits again.
-                    # It returns (length, atoms, 3). If atoms=['CA'], it's [L, 1, 3].
-                    # In parse_PDB: coords_dict_chain['CA_chain_'+letter]=xyz.tolist()
-                    # So it is a list of lists.
                     
                     CA = np.array(coords_dict[ca_key]) # Should be [L, 1, 3]
                     if CA.ndim == 3 and CA.shape[1] == 1:
@@ -151,7 +144,7 @@ def compute_embeddings(model, pdb_files):
             residue_idx = residue_idx[valid_indices]
             chain_encoding_all = chain_encoding_all[valid_indices]
 
-            # CRITICAL FIX: Handle NaNs
+            # Handle NaNs
             X = torch.nan_to_num(X, nan=0.0)
 
             try:
@@ -214,6 +207,15 @@ def process_design(i, design_paths, ref_paths_all, candidate_indices_list):
     return f"{domain},{max_tm},{best_ref}\n"
 
 def main():
+    parser = argparse.ArgumentParser(description="Hybrid GPU Screening")
+    parser.add_argument("-i", "--input_dir", type=str, default=RAW_DESIGN_DIR, help="Input directory containing PDB designs")
+    parser.add_argument("-o", "--output_csv", type=str, default=OUTPUT_CSV, help="Output CSV file path")
+    args = parser.parse_args()
+
+    global RAW_DESIGN_DIR, OUTPUT_CSV
+    RAW_DESIGN_DIR = args.input_dir
+    OUTPUT_CSV = args.output_csv
+
     print("Initializing Hybrid GPU Screening...")
     
     # 0. Load Model
@@ -230,7 +232,7 @@ def main():
     # Filter only .ent or .pdb
     refs = [r for r in refs if r.endswith('.ent') or r.endswith('.pdb')]
     
-    print(f"Found {len(refs)} reference files. Embedding References uses GPU, this is fast.")
+    print(f"Found {len(refs)} reference files. Embedding References uses GPU.")
     ref_embs, ref_names = compute_embeddings(model, refs)
     if ref_embs is None: 
         print("Reference embedding failed.")
@@ -289,7 +291,7 @@ def main():
             for line in results:
                 f.write(line)
     
-    print(f"Done. Results saved to {OUTPUT_CSV}")
+    print(f"Finished. Results saved to {OUTPUT_CSV}")
 
 if __name__ == "__main__":
     multiprocessing.set_start_method('spawn') 

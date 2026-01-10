@@ -5,12 +5,24 @@ import seaborn as sns
 from sklearn.manifold import MDS
 import matplotlib.gridspec as gridspec
 import os
+import argparse
 
 # Configuration
-input_info_path = "/root/autodl-tmp/genie/runs/final_final-v0/version_3/samples/epoch_499/evaluations/info.csv"
-input_pair_path = "/root/autodl-tmp/genie/runs/final_final-v0/version_3/samples/epoch_499/evaluations/pair_info.csv"
-input_novelty_path = "/root/autodl-tmp/genie/runs/final_final-v0/version_3/samples/epoch_499/evaluations/novelty_hybrid.csv"
-output_file = "genie_design_space_mds_hybrid.png"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_RUN_DIR = os.path.join(BASE_DIR, "runs", "final_final-v0", "version_3", "samples", "epoch_499", "evaluations")
+
+parser = argparse.ArgumentParser(description="Plot Genie MDS Novelty")
+parser.add_argument("-i", "--input_dir", type=str, default=DEFAULT_RUN_DIR, help="Input directory containing csv files")
+parser.add_argument("-o", "--output_file", type=str, default="genie_design_space_mds_hybrid.png", help="Output image file")
+args = parser.parse_args()
+
+input_info_path = os.path.join(args.input_dir, "info.csv")
+input_pair_path = os.path.join(args.input_dir, "pair_info.csv")
+input_novelty_path = os.path.join(args.input_dir, "novelty_hybrid.csv")
+if not os.path.exists(input_novelty_path):
+    input_novelty_path = os.path.join(args.input_dir, "novelty.csv")
+    
+output_file = args.output_file
 
 print("Loading info.csv...")
 df = pd.read_csv(input_info_path)

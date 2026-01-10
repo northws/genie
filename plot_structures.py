@@ -3,13 +3,33 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import os
+import argparse
 
 # Configuration
-run_dir = "/root/autodl-tmp/genie/runs/final_final-v0/version_3/samples/epoch_499/evaluations"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_RUN_DIR = os.path.join(BASE_DIR, "runs", "final_final-v0", "version_3", "samples", "epoch_499", "evaluations")
+
+parser = argparse.ArgumentParser(description="Plot Novel Structures")
+parser.add_argument("-i", "--input_dir", type=str, default=DEFAULT_RUN_DIR, help="Input directory")
+parser.add_argument("-o", "--output_file", type=str, default="genie_structure_examples_novel.png", help="Output image file")
+args = parser.parse_args()
+
+run_dir = args.input_dir
+# Check if designs folder exists inside input dir, else assume input dir IS designs dir but info in parent?
+# Or simply stick to convention: input dir = evaluation dir containing 'designs' folder and csvs
 designs_dir = os.path.join(run_dir, "designs")
+if not os.path.exists(designs_dir):
+     # Fallback: maybe input dir IS the designs dir
+     designs_dir = run_dir
+     # And csvs are in parent?
+     run_dir = os.path.dirname(run_dir)
+
 info_path = os.path.join(run_dir, "info.csv")
 novelty_path = os.path.join(run_dir, "novelty_hybrid.csv")
-output_file = "genie_structure_examples_novel.png"
+if not os.path.exists(novelty_path):
+    novelty_path = os.path.join(run_dir, "novelty.csv")
+
+output_file = args.output_file
 
 # Load Data
 print("Loading data...")

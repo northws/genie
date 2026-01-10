@@ -3,15 +3,28 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import os
+import argparse
 
 # Set style
 sns.set_theme(style="ticks")
 plt.rcParams['font.family'] = 'sans-serif'
 
 # Load data
-csv_path = "/root/autodl-tmp/genie/runs/final_final-v0/version_3/samples/epoch_499/evaluations/info.csv"
-novelty_path = "/root/autodl-tmp/genie/runs/final_final-v0/version_3/samples/epoch_499/evaluations/novelty_hybrid.csv"
-output_file = "genie_analysis_figure2_repro_v2_hybrid.png"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_RUN_DIR = os.path.join(BASE_DIR, "runs", "final_final-v0", "version_3", "samples", "epoch_499", "evaluations")
+
+parser = argparse.ArgumentParser(description="Plot Genie Analysis")
+parser.add_argument("-i", "--input_dir", type=str, default=DEFAULT_RUN_DIR, help="Input directory containing info.csv and novelty files")
+parser.add_argument("-o", "--output_file", type=str, default="genie_analysis_figure2_repro_v2_hybrid.png", help="Output image file")
+args = parser.parse_args()
+
+csv_path = os.path.join(args.input_dir, "info.csv")
+novelty_path = os.path.join(args.input_dir, "novelty_hybrid.csv")
+# Fallback for novelty if not found with hybrid name
+if not os.path.exists(novelty_path):
+     novelty_path = os.path.join(args.input_dir, "novelty.csv")
+     
+output_file = args.output_file
 
 print(f"Loading data from {csv_path}...")
 try:

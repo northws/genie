@@ -152,11 +152,6 @@ def visualize_sample(input_file, output_dir=None):
     else:
         save_base = os.path.join(os.path.dirname(input_file), base_name)
     
-    # 1. Generate PDB
-    pdb_output = save_base + ".pdb"
-    structure = create_biopython_structure(data, structure_id=base_name)
-    save_pdb(structure, pdb_output)
-    
     # 2. Visualize
     img_output = save_base + "_protein.png"
     plot_protein_structure(data, img_output)

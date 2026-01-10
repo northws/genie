@@ -2,11 +2,13 @@
 
 Genie 是一个基于扩散模型的蛋白质从头设计工具，通过对定向残基云进行等变扩散来实现。
 
+本项目是对 [https://github.com/aqlaboratory/genie](https://github.com/aqlaboratory/genie) 的复现及优化。
+
 ## 安装
 
 1.  **克隆仓库：**
     ```bash
-    git clone https://github.com/a-lab-i/genie.git
+    git clone https://github.com/northws/genie.git
     cd genie
     ```
 
@@ -35,7 +37,19 @@ Genie 是一个基于扩散模型的蛋白质从头设计工具，通过对定�
 
 ## 使用方法
 
-### 1. 采样 (Sampling)
+### 1. 训练 (Training)
+
+从头开始训练新模型。
+
+```bash
+python genie/train.py \
+    --config example_configuration \
+    --gpus 0,1
+```
+
+配置文件定义了模型超参数和训练设置。详情请参考 `genie/config.py`。
+
+### 2. 采样 (Sampling)
 
 使用预训练模型生成蛋白质骨架。
 
@@ -53,18 +67,6 @@ python genie/sample.py \
     --num_batches 1 \
     --gpu 0
 ```
-
-### 2. 训练 (Training)
-
-从头开始训练新模型。
-
-```bash
-python genie/train.py \
-    --config example_configuration \
-    --gpus 0,1
-```
-
-配置文件定义了模型超参数和训练设置。详情请参考 `genie/config.py`。
 
 ### 3. 可视化 (Visualization)
 

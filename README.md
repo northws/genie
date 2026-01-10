@@ -2,11 +2,13 @@
 
 Genie is a diffusion-based model for de novo protein design through equivariantly diffusing oriented residue clouds.
 
+This project is a reproduction and optimization of [https://github.com/aqlaboratory/genie](https://github.com/aqlaboratory/genie).
+
 ## Installation
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/a-lab-i/genie.git
+    git clone https://github.com/northws/genie.git
     cd genie
     ```
 
@@ -35,7 +37,19 @@ Genie is a diffusion-based model for de novo protein design through equivariantl
 
 ## Usage
 
-### 1. Sampling
+### 1. Training
+
+To train a new model from scratch.
+
+```bash
+python genie/train.py \
+    --config example_configuration \
+    --gpus 0,1
+```
+
+Configuration files define model hyperparameters and training settings. See `genie/config.py` for details.
+
+### 2. Sampling
 
 To generate protein backbones using a pre-trained model.
 
@@ -53,18 +67,6 @@ python genie/sample.py \
     --num_batches 1 \
     --gpu 0
 ```
-
-### 2. Training
-
-To train a new model from scratch.
-
-```bash
-python genie/train.py \
-    --config example_configuration \
-    --gpus 0,1
-```
-
-Configuration files define model hyperparameters and training settings. See `genie/config.py` for details.
 
 ### 3. Visualization
 

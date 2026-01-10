@@ -25,7 +25,7 @@ INFO_CSV = os.path.join(RUN_DIR, "info.csv")
 # Constants
 K_NEIGHBORS = 30 
 BATCH_SIZE = 25 
-TOP_K_SCREEN = 150  # Increased from 50 for better recall
+TOP_K_SCREEN = 1000  # Increased from 150 for better recall
 SIM_CHUNK_SIZE = 5000  # Chunk size for similarity computation to avoid OOM
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")

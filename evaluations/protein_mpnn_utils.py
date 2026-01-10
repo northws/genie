@@ -796,8 +796,8 @@ class CA_ProteinFeatures(nn.Module):
         u_1 = U[:,1:-1,:]
         u_0 = U[:,2:,:]
         # Backbone normals
-        n_2 = F.normalize(torch.cross(u_2, u_1), dim=-1)
-        n_1 = F.normalize(torch.cross(u_1, u_0), dim=-1)
+        n_2 = F.normalize(torch.cross(u_2, u_1, dim=-1), dim=-1)
+        n_1 = F.normalize(torch.cross(u_1, u_0, dim=-1), dim=-1)
 
         # Bond angle calculation
         cosA = -(u_1 * u_0).sum(-1)
@@ -813,7 +813,7 @@ class CA_ProteinFeatures(nn.Module):
 
         # Build relative orientations
         o_1 = F.normalize(u_2 - u_1, dim=-1)
-        O = torch.stack((o_1, n_2, torch.cross(o_1, n_2)), 2)
+        O = torch.stack((o_1, n_2, torch.cross(o_1, n_2, dim=-1)), 2)
         O = O.view(list(O.shape[:2]) + [9])
         O = F.pad(O, (0,0,1,2), 'constant', 0)
         O_neighbors = gather_nodes(O, E_idx)

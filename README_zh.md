@@ -49,6 +49,12 @@ python genie/train.py \
 
 配置文件定义了模型超参数和训练设置。详情请参考 `genie/config.py`。
 
+**参数说明 (genie/train.py)：**
+
+- `-c, --config`（必选）：配置文件路径/名称。用于指定训练所需的模型结构与超参数配置。
+- `-g, --gpus`：使用的 GPU 设备，例如 `"0"` 或 `"0,1"`，通常用于控制 `CUDA_VISIBLE_DEVICES` / 多卡选择。
+- `-r, --resume`：断点续训的 checkpoint（`.ckpt`）文件路径。
+
 ### 2. 采样 (Sampling)
 
 使用预训练模型生成蛋白质骨架。
@@ -68,35 +74,78 @@ python genie/sample.py \
     --gpu 0
 ```
 
+**参数说明 (genie/sample.py)：**
+
+- `-n, --model_name`（必选）：模型名称（对应 `runs/<model_name>/...` 的目录名）。
+- `-r, --rootdir`（默认：`runs`）：运行目录根路径（包含 `runs/<model_name>/...` 结构）。
+- `-v, --model_version`：模型版本号（对应 `runs/<model_name>/version_<N>/...`）。
+- `-e, --model_epoch`：加载的 checkpoint 对应 epoch（用于选择 checkpoint）。
+- `-g, --gpu`：使用的 GPU 编号。注意该参数的值是“可选”的：写 `--gpu` 等价于 `--gpu 0`；写 `--gpu 1` 则使用 GPU 1。
+- `--batch_size`（默认：`5`）：每个 batch 生成的样本数。
+- `--num_batches`（默认：`2`）：生成的 batch 数，总样本数 = `batch_size * num_batches`。
+- `--noise_scale`（默认：`0.6`）：采样噪声强度，影响随机性/多样性。
+- `--min_length`（默认：`50`）：采样长度下限。
+- `--max_length`（默认：`128`）：采样长度上限。
+- `--save_trajectory`：是否保存扩散过程每个时间步的轨迹（`.npy`），用于生成动画可视化；会增加磁盘占用与耗时。
+
 ### 3. 可视化 (Visualization)
 
 你可以使用提供的脚本可视化生成的结构（保存为 `.npy` 坐标文件）。
 
 ```bash
-python evaluations/visualize.py
+python evaluations/visualize.py <input_file> -o <output_dir>
 ```
-（注意：你可能需要修改 `evaluations/visualize.py` 或使用 `evaluations/visualize_protein.py` 来指向你具体的输出文件）。
+
+
+**参数说明 (evaluations/visualize.py)：**
+
+- `input_file`（位置参数）：输入坐标文件路径（通常为 `.npy`；脚本也会尝试按 CSV/文本读取）。
+- `-o, --output_dir`（可选）：输出目录；不填则默认输出到 `input_file` 同目录。
+
+**替代脚本（接口类似）：**
+
+- `python evaluations/visualize_protein.py <input_file> -o <output_dir>`：更“蛋白质骨架风格”的可视化（平滑曲线 + N→C 渐变）。
+
+**轨迹动画可视化（evaluations/visualize_trajectory.py）：**
+
+```bash
+python evaluations/visualize_trajectory.py <traj_npy> <output_gif>
+```
+
+**参数说明 (evaluations/visualize_trajectory.py)：**
+
+- `traj_npy`（位置参数）：由 `genie/sample.py --save_trajectory` 生成的轨迹 `.npy` 文件。
+- `output_gif`（位置参数）：输出 `.gif` 动画文件路径。
+
+（注意：你也可以使用 `evaluations/visualize_protein.py` 来获得更平滑的骨架展示效果。）
 
 ### 4. 分析与评估 (Analysis and Evaluation)
 
-本项目包含用于评估生成设计的创新性（Novelty）以及可视化设计空间的脚本。
+本项目包含用于评估生成结构的质量与创新性，以及用于可视化分析结果的脚本。
 
-#### 质量评估 (Quality Evaluation)
+#### 质量评估 (Quality Evaluation - scTM & pLDDT)
 
-为了评估生成骨架的可设计性，请使用评估流程。此步骤运行 ProteinMPNN (逆折叠) 和 ESMFold (折叠) 来计算自洽 TM-score (scTM) 和 pLDDT。
+评估流程会运行 ProteinMPNN（逆折叠/序列设计）与 ESMFold（折叠/结构预测），计算自洽 TM-score（scTM）与 pLDDT，并生成后续绘图所需的 `info.csv`。
 
 ```bash
 python evaluations/pipeline/evaluate.py \
     --input_dir runs/scope_l_128/version_0/samples/epoch_49999 \
     --output_dir runs/scope_l_128/version_0/samples/epoch_49999/evaluations
 ```
-这将生成绘图脚本所需的 `info.csv` 文件。
+
+**参数说明 (evaluations/pipeline/evaluate.py)：**
+
+- `--input_dir`（必选）：待评估样本所在目录。
+- `--output_dir`（必选）：评估结果输出目录（会生成 `info.csv` 等）。
+- `-g, --gpus`（可选）：使用的 GPU 设备，例如 `"0"` 或 `"0,1"`。
+- `-c, --config`（可选）：为兼容保留，但脚本会忽略该参数。
 
 #### 创新性评估 (Novelty Evaluation)
 
-计算生成设计的创新性（即与 PDB 等参考数据库的 TM-score）：
+通过 TM-score 将生成的蛋白质与参考数据库（例如 PDB）进行比对，得到每个设计与数据库中最相似结构的最大 TM（越低通常越“新颖”）。
 
-*   **CPU 版本 (精确，暴力搜索):**
+*   **CPU 版本（精确，暴力搜索）(evaluations/Novelty_Evaluation_CPU.py)：**
+
     ```bash
     python evaluations/Novelty_Evaluation_CPU.py \
         --input_dir runs/scope_l_128/version_0/samples/epoch_49999/evaluations \
@@ -104,32 +153,75 @@ python evaluations/pipeline/evaluate.py \
         --num_workers 4
     ```
 
-*   **GPU 版本 (混合方法，快速筛选):**
-    使用 ProteinMPNN 嵌入在运行 TM-align 之前对候选者进行筛选。
+    **参数说明：**
+
+    - `-i, --input_dir`：输入目录。可以指向包含 `info.csv` 的评估目录（若存在 `designs/` 子目录会自动识别）。
+    - `-o, --output_csv`：输出 CSV 路径。默认：`<input_dir>/novelty.csv`。
+    - `--ref_dir`：参考数据库目录（例如 `data/pdbstyle-2.08`）。
+    - `--tmalign`：`TMalign` 可执行文件路径。
+    - `--num_workers`：并行进程数。
+    - `--length_tolerance`：长度预筛选容差（默认 `0.3` 表示 ±30%）。
+    - `--early_stop_tm`：提前停止阈值（默认 `0.5`），当发现 TM 超过该值时可停止搜索（视为“不新颖”）。
+    - `--no_early_stop`：关闭提前停止，改为精确搜索最大 TM。
+    - `--no_length_filter`：关闭长度预筛选。
+
+*   **GPU 版本（混合方法，快速筛选）(evaluations/Novelty_Evaluation_GPU.py)：**
+
     ```bash
     python evaluations/Novelty_Evaluation_GPU.py \
-        --input_dir runs/scope_l_128/version_0/samples/\
-        --ref_dir data/pdbstyle-2.08 \
-        epoch_49999/evaluations
+        --input_dir runs/scope_l_128/version_0/samples/epoch_49999/evaluations \
+        --ref_dir data/pdbstyle-2.08
     ```
+
+    **参数说明：**
+
+    - `-i, --input_dir`：输入目录（包含 PDB 设计）。若目录下存在 `designs/` 子目录会自动切换到该子目录。
+    - `-o, --output_csv`：输出 CSV 路径。默认：在评估目录（或 `designs/` 的父目录）生成 `novelty_hybrid.csv`。
+    - `-r, --ref_dir`：参考数据库目录。
 
 #### 绘图分析 (Plotting Analysis)
 
-*   **设计空间 MDS 图:**
-    使用多维缩放 (MDS) 可视化生成样本的分布。
-    ```bash
-    python evaluations/plot_genie_mds_novelty.py \
-        --input_dir runs/.../evaluations \
-        --output_file mds_plot.png
-    ```
+使用统一的 `evaluations/plot.py` 脚本来生成分析图表。该脚本整合了 MDS 图、综合分析（复现图2）和 3D 结构可视化的功能。
 
-*   **综合分析 (复现论文图2):**
-    绘制 pLDDT 与 scTM 的关系图、SSE 分布以及可设计性统计。
-    ```bash
-    python evaluations/plot_genie_analysis.py \
-        --input_dir runs/.../evaluations \
-        --output_file analysis_plot.png
-    ```
+**命令行参数说明 (evaluations/plot.py)：**
+
+- `-i, --input_dir`：输入目录（默认指向仓库内的一个示例 runs 目录）。通常应为评估目录，至少包含 `info.csv`。
+- `-p, --plot`：生成哪种图表（默认 `all`）：
+  - `analysis`：综合分析（复现论文图2风格：pLDDT vs scTM、SSE 分布、长度分布、统计柱状图）。
+  - `mds`：设计空间 MDS 图（需要 `pair_info.csv`）。
+  - `structures`：3D 结构示例（需要 PDB 设计文件与 novelty CSV）。
+  - `all`：生成以上所有图。
+- `-o, --output_dir`：输出目录（默认当前目录）。
+
+**使用示例：**
+
+```bash
+# 生成所有图表
+python evaluations/plot.py --input_dir runs/.../evaluations --output_dir outputs/plots --plot all
+
+# 仅生成 MDS 图
+python evaluations/plot.py -i runs/.../evaluations -p mds -o outputs/plots
+```
+
+**Python API（evaluations/plot.py）：**
+
+- `get_default_run_dir()`：返回默认评估目录。
+- `load_data(input_dir)`：
+  - `input_dir`：评估目录（包含 `info.csv`）。
+  - 返回：`(df, has_novelty)`。
+- `parse_pdb_ca(filepath)`：
+  - `filepath`：`.pdb` 文件路径。
+  - 返回：`N x 3` 的 Cα 坐标数组。
+- `plot_genie_analysis(input_dir, output_file='genie_analysis_figure2_repro_v2_hybrid.png')`：
+  - `input_dir`：评估目录。
+  - `output_file`：输出图片路径。
+- `plot_genie_mds_novelty(input_dir, output_file='genie_design_space_mds_hybrid.png')`：
+  - `input_dir`：评估目录（需要 `pair_info.csv`）。
+  - `output_file`：输出图片路径。
+- `plot_structures(input_dir, output_file='genie_structure_examples_novel.png')`：
+  - `input_dir`：评估目录或 `designs/` 目录。
+  - `output_file`：输出图片路径。
+- `main()`：命令行入口（对应上述 `-i/-p/-o`）。
 
 ## 项目结构 (Project Structure)
 
@@ -173,14 +265,7 @@ python evaluations/pipeline/evaluate.py \
 ### 生成过程 (Generation Process)
 ![生成过程](process.gif)
 
-### 创新结构示例 (Novel Structure Examples)
-![创新结构](Training_process_parameters/genie_structure_examples_novel.png)
 
-### 设计空间分析 (Design Space Analysis)
-![设计空间 MDS](Training_process_parameters/genie_design_space_mds_hybrid.png)
-
-### 综合分析 (Comprehensive Analysis)
-![分析结果](Training_process_parameters/genie_analysis_figure2_repro_v2_hybrid.png)
 
 ## 优化结果
 
@@ -202,6 +287,26 @@ python evaluations/pipeline/evaluate.py \
 | **训练 Loss (最终 Epoch)** | ~0.758 | ~0.771 | 基本持平 |
 
 优化后，训练速度提升了约 2 倍，同时显存占用降低了约 12%。对 Step Loss (平滑后) 的分析表明，最终 Epoch Loss 的微小差异源于随机波动，两者的收敛趋势在实际训练中表现一致。
+
+### 生成质量对比 (Generative Quality Comparison)
+
+我们将优化后的模型与原版数据在生成能力上进行了可视化对比。结果表明，优化后的模型保持了相当的生成质量。
+
+**设计空间分析 (Design Space Analysis - MDS):**
+
+| 原始工作 (Original Work) | 本工作 (This Work - Optimized) |
+| :---: | :---: |
+| ![Original MDS](Training_process_parameters/origin_work_mds_hybrid.png) | ![Optimized MDS](Training_process_parameters/this_work_mds_hybrid.png) |
+
+**综合分析 (Comprehensive Analysis):**
+
+| 原始工作 (Original Work) | 本工作 (This Work - Optimized) |
+| :---: | :---: |
+| ![Original Hybrid](Training_process_parameters/origin_work_hybrid.png) | ![Optimized Hybrid](Training_process_parameters/this_work_hybrid.png) |
+
+**创新结构示例 (Novel Structure Examples - Optimized Work):**
+
+![Novel Structures](Training_process_parameters/this_work_structure_examples_novel.png)
 
 
 

@@ -108,7 +108,9 @@ python evaluations/pipeline/evaluate.py \
     使用 ProteinMPNN 嵌入在运行 TM-align 之前对候选者进行筛选。
     ```bash
     python evaluations/Novelty_Evaluation_GPU.py \
-        --input_dir runs/scope_l_128/version_0/samples/epoch_49999/evaluations
+        --input_dir runs/scope_l_128/version_0/samples/\
+        --ref_dir data/pdbstyle-2.08 \
+        epoch_49999/evaluations
     ```
 
 #### 绘图分析 (Plotting Analysis)

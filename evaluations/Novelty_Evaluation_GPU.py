@@ -209,12 +209,30 @@ def process_design(i, design_paths, ref_paths_all, candidate_indices_list):
 def main():
     parser = argparse.ArgumentParser(description="Hybrid GPU Screening")
     parser.add_argument("-i", "--input_dir", type=str, default=RAW_DESIGN_DIR, help="Input directory containing PDB designs")
-    parser.add_argument("-o", "--output_csv", type=str, default=OUTPUT_CSV, help="Output CSV file path")
+    parser.add_argument("-o", "--output_csv", type=str, default=None, help="Output CSV file path")
+    parser.add_argument("-r", "--ref_dir", type=str, default=REF_DB_DIR, help="Reference database directory")
     args = parser.parse_args()
 
-    global RAW_DESIGN_DIR, OUTPUT_CSV
-    RAW_DESIGN_DIR = args.input_dir
-    OUTPUT_CSV = args.output_csv
+    global RAW_DESIGN_DIR, OUTPUT_CSV, REF_DB_DIR
+    
+    # Auto-detect designs folder if user points to parent directory
+    if os.path.exists(os.path.join(args.input_dir, "designs")):
+        RAW_DESIGN_DIR = os.path.join(args.input_dir, "designs")
+        print(f"Detected 'designs' subdirectory. Setting input directory to: {RAW_DESIGN_DIR}")
+        default_output_dir = args.input_dir
+    else:
+        RAW_DESIGN_DIR = args.input_dir
+        if os.path.basename(os.path.normpath(RAW_DESIGN_DIR)) == 'designs':
+            default_output_dir = os.path.dirname(os.path.normpath(RAW_DESIGN_DIR))
+        else:
+            default_output_dir = RAW_DESIGN_DIR
+
+    if args.output_csv:
+        OUTPUT_CSV = args.output_csv
+    else:
+        OUTPUT_CSV = os.path.join(default_output_dir, "novelty_hybrid.csv")
+
+    REF_DB_DIR = args.ref_dir
 
     print("Initializing Hybrid GPU Screening...")
     

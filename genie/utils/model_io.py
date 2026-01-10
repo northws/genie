@@ -19,6 +19,9 @@ def get_epochs(rootdir, name, version):
 	# Try both locations: under version folder (default lightning) and directly under model folder
 	ckpt_paths = glob.glob(os.path.join(basedir, 'version_{}'.format(version), 'checkpoints', '*.ckpt'))
 	if not ckpt_paths:
+		# Also try under version folder directly (without checkpoints subfolder)
+		ckpt_paths = glob.glob(os.path.join(basedir, 'version_{}'.format(version), '*.ckpt'))
+	if not ckpt_paths:
 		ckpt_paths = glob.glob(os.path.join(basedir, 'checkpoints', '*.ckpt'))
 	
 	if not ckpt_paths:
@@ -60,7 +63,7 @@ def load_model(rootdir, name, version=None, epoch=None):
 	else:
 		if epoch not in available_epochs:
 			print('Missing checkpoint epoch: {}'.format(epoch))
-			print('Available epochs:', available_epochs) 
+			print('Available epochs: {}'.format(available_epochs))
 			sys.exit(0)
 
 	# load checkpoint
@@ -70,6 +73,7 @@ def load_model(rootdir, name, version=None, epoch=None):
 	
 	possible_paths = [
 		os.path.join(basedir, 'version_{}'.format(version), 'checkpoints', ckpt_filename_pattern),
+		os.path.join(basedir, 'version_{}'.format(version), ckpt_filename_pattern),
 		os.path.join(basedir, 'checkpoints', ckpt_filename_pattern)
 	]
 	

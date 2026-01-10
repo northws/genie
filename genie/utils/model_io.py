@@ -25,7 +25,7 @@ def get_epochs(rootdir, name, version):
 		return []
 
 	return sorted([
-		int(epoch_filepath.split('epoch=')[-1].split('-')[0])
+		int(epoch_filepath.split('epoch=')[-1].split('-')[0].replace('.ckpt', ''))
 		for epoch_filepath in ckpt_paths
 	])
 

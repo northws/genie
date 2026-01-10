@@ -16,5 +16,10 @@ setup(
             'pandas',
             'tensorboard',
             'pytorch_lightning',
+            'biopython',
+            'matplotlib',
+            'seaborn',
+            'scikit-learn',
+            'fair-esm',
       ],
 )

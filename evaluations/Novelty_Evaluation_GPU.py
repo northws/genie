@@ -28,6 +28,14 @@ BATCH_SIZE = 25
 TOP_K_SCREEN = 1000  # Increased from 150 for better recall
 SIM_CHUNK_SIZE = 5000  # Chunk size for similarity computation to avoid OOM
 
+# Early stopping optimization
+EARLY_STOP_TM = 0.5  # Stop early if TM-score exceeds this threshold (structure is NOT novel)
+ENABLE_EARLY_STOP = True  # Enable early stopping for faster novelty detection
+
+# Length filtering optimization
+LENGTH_TOLERANCE = 0.3  # Only compare structures with length within ±30%
+ENABLE_LENGTH_FILTER = True  # Enable length-based pre-filtering
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Import ProteinMPNN
@@ -48,6 +56,21 @@ def gather_nodes(nodes, neighbor_idx):
     neighbor_features = torch.gather(nodes, 1, neighbors_flat)
     neighbor_features = neighbor_features.view(list(neighbor_idx.shape)[:3] + [-1])
     return neighbor_features
+
+def get_pdb_length(pdb_path):
+    """Get the number of CA atoms (residues) in a PDB file."""
+    count = 0
+    try:
+        with open(pdb_path, 'r') as f:
+            for line in f:
+                if line.startswith('ATOM') and line[12:16].strip() == 'CA':
+                    count += 1
+    except:
+        pass
+    return count
+
+# Global length cache to avoid repeated file reads
+PDB_LENGTH_CACHE = {}
 
 def get_mpnn_model():
     weight_path = os.path.join(BASE_DIR, "packages", "ProteinMPNN", "ca_model_weights", "v_48_020.pt")
@@ -195,10 +218,28 @@ def process_design(i, design_paths, ref_paths_all, candidate_indices_list):
     max_tm = 0.0
     best_ref = ""
     
+    # Length filtering: get design length
+    design_length = get_pdb_length(d_path)
+    if ENABLE_LENGTH_FILTER and design_length > 0:
+        min_len = int(design_length * (1 - LENGTH_TOLERANCE))
+        max_len = int(design_length * (1 + LENGTH_TOLERANCE))
+    else:
+        min_len, max_len = 0, float('inf')
+    
     # Run TMalign
     for ref_p in candidate_refs:
         if not os.path.exists(ref_p):
             continue
+        
+        # Length filter: skip references with very different lengths
+        if ENABLE_LENGTH_FILTER and design_length > 0:
+            # Use cache for reference lengths
+            if ref_p not in PDB_LENGTH_CACHE:
+                PDB_LENGTH_CACHE[ref_p] = get_pdb_length(ref_p)
+            ref_length = PDB_LENGTH_CACHE[ref_p]
+            if ref_length < min_len or ref_length > max_len:
+                continue  # Skip this reference due to length mismatch
+        
         cmd = [TMALIGN_EXEC, d_path, ref_p]
         try:
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
@@ -211,6 +252,10 @@ def process_design(i, design_paths, ref_paths_all, candidate_indices_list):
                 if tm > max_tm:
                     max_tm = tm
                     best_ref = ref_p
+                    
+                    # Early stopping: if TM > threshold, structure is NOT novel, stop searching
+                    if ENABLE_EARLY_STOP and tm > EARLY_STOP_TM:
+                        break
         except subprocess.TimeoutExpired:
             continue
         except Exception as e:

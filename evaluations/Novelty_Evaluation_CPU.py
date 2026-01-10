@@ -125,7 +125,7 @@ def processing_func(design_path):
             comparisons_made += 1
             
             # Parse output
-            match = re.search(r'TM-score=\s*([\d\.]+)\s*\(if normalized by length of Chain_1\)', res.stdout)
+            match = re.search(r'TM-score=\s*([\d\.]+)\s*\(if normalized by length of Chain_1', res.stdout)
             if match:
                 tm = float(match.group(1))
                 if tm > max_tm:

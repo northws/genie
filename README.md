@@ -99,7 +99,9 @@ To calculate the novelty of generated designs (TM-score against a reference data
 *   **CPU Version (Exact, Brute-force):**
     ```bash
     python evaluations/Novelty_Evaluation_CPU.py \
-        --input_dir runs/scope_l_128/version_0/samples/epoch_49999/evaluations
+        --input_dir runs/scope_l_128/version_0/samples/epoch_49999/evaluations \
+        --ref_dir data/pdbstyle-2.08 \
+        --num_workers 4
     ```
 
 *   **GPU Version (Hybrid, Faster):**
@@ -108,18 +110,7 @@ To calculate the novelty of generated designs (TM-score against a reference data
         --input_dir runs/scope_l_128/version_0/samples/epoch_49999/evaluations \
         --ref_dir data/pdbstyle-2.08
     ```
-    python evaluations/Novelty_Evaluation_CPU.py \
-        --input_dir runs/scope_l_128/version_0/samples/epoch_49999/evaluations \
-        --ref_dir data/pdbstyle-2.08 \
-        --num_workers 4
-    ```
 
-*   **GPU Version (Hybrid, Fast Screening):**
-    Uses ProteinMPNN embeddings to screen candidates before running TM-align.
-    ```bash
-    python evaluations/Novelty_Evaluation_GPU.py \
-        --input_dir runs/scope_l_128/version_0/samples/epoch_49999/evaluations
-    ```
 
 #### Plotting Analysis
 

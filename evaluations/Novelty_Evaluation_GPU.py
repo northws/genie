@@ -25,7 +25,8 @@ INFO_CSV = os.path.join(RUN_DIR, "info.csv")
 # Constants
 K_NEIGHBORS = 30 
 BATCH_SIZE = 25 
-TOP_K_SCREEN = 50 
+TOP_K_SCREEN = 150  # Increased from 50 for better recall
+SIM_CHUNK_SIZE = 5000  # Chunk size for similarity computation to avoid OOM
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -75,12 +76,15 @@ def compute_embeddings(model, pdb_files):
             pdb_dicts = []
             for p_file in chunk:
                 try:
+                    # Try chain A first, fallback to all chains
                     d_list = parse_PDB(p_file, input_chain_list=['A'], ca_only=True)
+                    if not d_list:
+                        d_list = parse_PDB(p_file, ca_only=True)  # Try all chains
                     for d in d_list:
                         d['full_path'] = p_file # Attach full path
                     pdb_dicts.extend(d_list)
-                except:
-                    pass
+                except Exception as e:
+                    print(f"Warning: Failed to parse {p_file}: {e}")
             
             if not pdb_dicts: continue
             
@@ -193,18 +197,25 @@ def process_design(i, design_paths, ref_paths_all, candidate_indices_list):
     
     # Run TMalign
     for ref_p in candidate_refs:
+        if not os.path.exists(ref_p):
+            continue
         cmd = [TMALIGN_EXEC, d_path, ref_p]
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            # Try both normalization patterns
             match = re.search(r'TM-score=\s*([\d\.]+)\s*\(if normalized by length of Chain_1', res.stdout)
+            if not match:
+                match = re.search(r'TM-score=\s*([\d\.]+)', res.stdout)
             if match:
                 tm = float(match.group(1))
                 if tm > max_tm:
                     max_tm = tm
                     best_ref = ref_p
-        except:
+        except subprocess.TimeoutExpired:
             continue
-    return f"{domain},{max_tm},{best_ref}\n"
+        except Exception as e:
+            continue
+    return f"{domain},{max_tm:.4f},{best_ref}\n"
 
 def main():
     global RAW_DESIGN_DIR, OUTPUT_CSV, REF_DB_DIR
@@ -271,16 +282,43 @@ def main():
     
     design_embs = torch.nn.functional.normalize(design_embs, p=2, dim=1).to(DEVICE)
     
-    # 3. Compute Similarity Matrix
-    print("Computing Similarity Matrix...")
-    sim_matrix = torch.matmul(design_embs, ref_embs.T)
-    # Check stats
-    print(f"DEBUG Stats: Sim Mean={sim_matrix.mean().item()} Std={sim_matrix.std().item()}")
+    # 3. Compute Similarity Matrix (chunked to avoid OOM)
+    print("Computing Similarity Matrix (chunked)...")
+    num_designs = design_embs.shape[0]
+    num_refs = ref_embs.shape[0]
+    
+    # Adjust TOP_K if reference set is smaller
+    actual_top_k = min(TOP_K_SCREEN, num_refs)
+    
+    # Chunked computation for large matrices
+    all_top_idxs = []
+    all_top_vals = []
+    
+    for i in range(0, num_designs, SIM_CHUNK_SIZE):
+        end_i = min(i + SIM_CHUNK_SIZE, num_designs)
+        design_chunk = design_embs[i:end_i]
+        
+        # Compute similarity for this chunk
+        sim_chunk = torch.matmul(design_chunk, ref_embs.T)
+        
+        # Get top-k for this chunk
+        top_vals_chunk, top_idxs_chunk = torch.topk(sim_chunk, k=actual_top_k, dim=1)
+        all_top_idxs.append(top_idxs_chunk.cpu())
+        all_top_vals.append(top_vals_chunk.cpu())
+        
+        # Free memory
+        del sim_chunk
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    
+    top_idxs = torch.cat(all_top_idxs, dim=0).numpy()
+    top_vals = torch.cat(all_top_vals, dim=0)
+    
+    # Debug stats
+    print(f"DEBUG Stats: Top Sim Mean={top_vals.mean().item():.4f} Std={top_vals.std().item():.4f}")
+    print(f"DEBUG Stats: Top Sim Max={top_vals.max().item():.4f} Min={top_vals.min().item():.4f}")
     
     # 4. Top-K Selection
-    print(f"Selecting Top-{TOP_K_SCREEN} candidates...")
-    top_vals, top_idxs = torch.topk(sim_matrix, k=TOP_K_SCREEN, dim=1)
-    top_idxs = top_idxs.cpu().numpy()
+    print(f"Selected Top-{actual_top_k} candidates for each design.")
     
     # Init CSV
     with open(OUTPUT_CSV, 'w') as f:

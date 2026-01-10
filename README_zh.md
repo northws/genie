@@ -174,13 +174,34 @@ python evaluations/pipeline/evaluate.py \
 ![生成过程](process.gif)
 
 ### 创新结构示例 (Novel Structure Examples)
-![创新结构](genie_structure_examples_novel.png)
+![创新结构](Training_process_parameters/genie_structure_examples_novel.png)
 
 ### 设计空间分析 (Design Space Analysis)
-![设计空间 MDS](genie_design_space_mds_hybrid.png)
+![设计空间 MDS](Training_process_parameters/genie_design_space_mds_hybrid.png)
 
 ### 综合分析 (Comprehensive Analysis)
-![分析结果](genie_analysis_figure2_repro_v2_hybrid.png)
+![分析结果](Training_process_parameters/genie_analysis_figure2_repro_v2_hybrid.png)
+
+## 优化结果
+
+![优化对比](Training_process_parameters/optimization_comparison.png)
+
+我们对比了原始实现与本优化版本的训练过程参数（数据位于 `Training_process_parameters/` 文件夹中）。
+
+**硬件配置:**
+*   **GPU:** RTX 5090 (32GB) * 1
+*   **CPU:** 25 vCPU Intel(R) Xeon(R) Platinum 8470Q
+*   **内存:** 90GB
+
+**对比总结：**
+
+| 指标 | 原始工作 | 本工作 (优化后) | 提升 |
+| :--- | :--- | :--- | :--- |
+| **训练时长 (500 Epochs)** | ~25.7 小时 | ~12.8 小时 | **~2.0倍 加速** |
+| **最大 GPU 显存占用** | ~29.53 GB | ~25.92 GB | **降低约 12%** |
+| **训练 Loss (最终 Epoch)** | ~0.758 | ~0.771 | 基本持平 |
+
+优化后，训练速度提升了约 2 倍，同时显存占用降低了约 12%。对 Step Loss (平滑后) 的分析表明，最终 Epoch Loss 的微小差异源于随机波动，两者的收敛趋势在实际训练中表现一致。
 
 
 

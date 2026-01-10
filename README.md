@@ -172,13 +172,34 @@ This project is built upon several excellent open-source projects and academic r
 ![Generation Process](process.gif)
 
 ### Novel Structure Examples
-![Novel Structures](genie_structure_examples_novel.png)
+![Novel Structures](Training_process_parameters/genie_structure_examples_novel.png)
 
 ### Design Space Analysis
-![Design Space MDS](genie_design_space_mds_hybrid.png)
+![Design Space MDS](Training_process_parameters/genie_design_space_mds_hybrid.png)
 
 ### Comprehensive Analysis
-![Analysis Results](genie_analysis_figure2_repro_v2_hybrid.png)
+![Analysis Results](Training_process_parameters/genie_analysis_figure2_repro_v2_hybrid.png)
+
+## Optimization Results
+
+![Optimization Comparison](Training_process_parameters/optimization_comparison.png)
+
+We compared the training process parameters between the original implementation and our optimized version (files located in `Training_process_parameters/`).
+
+**Hardware Configuration:**
+*   **GPU:** RTX 5090 (32GB) * 1
+*   **CPU:** 25 vCPU Intel(R) Xeon(R) Platinum 8470Q
+*   **Memory:** 90GB
+
+**Comparison Summary:**
+
+| Metric | Original Work | This Work (Optimized) | Improvement |
+| :--- | :--- | :--- | :--- |
+| **Training Time (500 Epochs)** | ~25.7 Hours | ~12.8 Hours | **~2.0x Speedup** |
+| **Max GPU Memory Usage** | ~29.53 GB | ~25.92 GB | **~12% Reduction** |
+| **Training Loss (Final Epoch)** | ~0.758 | ~0.771 | Comparable |
+
+The optimization reduced training time by half and GPU memory usage by approximately 12%. Analysis of step-wise loss (smoothed) confirms that the slight difference in final epoch loss is due to stochastic fluctuations, and both models exhibit identical convergence behavior.
 
 
 

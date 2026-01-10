@@ -5,7 +5,7 @@ Genie is a diffusion-based model for de novo protein design through equivariantl
 This project is a reproduction and optimization of [https://github.com/aqlaboratory/genie](https://github.com/aqlaboratory/genie).
 
 **Read this in other languages:  [中文](README_zh.md)**
-```<websource>source_group_web_2</websource>
+
 **View the demo notebook:** [genie_demo.ipynb](genie_demo.ipynb)
 ## Installation
 

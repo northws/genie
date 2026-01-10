@@ -1,6 +1,10 @@
 import wandb
 import argparse
 import os
+import sys
+
+# Add the project root to sys.path to allow importing the genie package
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # [Optimization] Reduce memory fragmentation
 # Setting this before importing torch to ensure it takes effect
@@ -15,12 +19,19 @@ from pytorch_lightning.loggers import WandbLogger, TensorBoardLogger
 from genie.config import Config
 from genie.data.data_module import SCOPeDataModule
 from genie.diffusion.genie import Genie
+from genie.utils.oom_callback import OOMMonitorCallback
 
 
 def main(args):
     # [Optimization] Enable TF32 on Ampere+ GPUs (A100, RTX3090, etc.)
     # 'medium' or 'high' enables Tensor Cores for float32 matrix multiplications
     torch.set_float32_matmul_precision('medium')
+    
+    # [Added] Monitor CUDA memory allocation globally
+    try:
+        torch.cuda.set_per_process_memory_fraction(0.95) # Reserve some memory for system
+    except RuntimeError:
+        pass # Not applicable on CPU-only
 
     # [Optimization] Enable cuDNN benchmark for fixed input sizes
     # This finds the best convolution algorithms for the hardware
@@ -84,7 +95,7 @@ def main(args):
         enable_progress_bar=True,  # Changed to True usually for UX, set False if running in strict pipeline
         log_every_n_steps=config.training['log_every_n_step'],
         max_epochs=config.training['n_epoch'],
-        callbacks=[checkpoint_callback]
+        callbacks=[checkpoint_callback, OOMMonitorCallback()]
     )
 
     # run

@@ -140,3 +140,45 @@ To calculate the novelty of generated designs (TM-score against a reference data
 -   `packages/`: External tools (TMscore).
 -   `scripts/`: Utility scripts for setup.
 -   `weights/`: Pre-trained model weights.
+
+## Citations and Acknowledgements
+
+This project is built upon several excellent open-source projects and academic research results：
+### Core Algorithm & Models
+*   **Genie (Original Implementation)**:
+    Lin, Y. C., & AlQuraishi, M. (2023). Generating protein backbone structures with equivariant diffusion models. *arXiv preprint arXiv:2301.12485*.
+    [[Paper]](https://arxiv.org/abs/2301.12485) [[Code]](https://github.com/aqlaboratory/genie)
+
+*   **Flash-IPA (Optimization)**:
+    Flagship Pioneering. (2023). Flash-IPA: Accelerated Invariant Point Attention. GitHub.
+    [[Code]](https://github.com/flagshippioneering/flash_ipa)
+
+### Evaluation Pipeline
+*   **ProteinMPNN (Sequence Design)**:
+    Dauparas, J., et al. (2022). Robust deep learning–based protein sequence design using ProteinMPNN. *Science*, 378(6615), 49-56.
+    [[Paper]](https://www.science.org/doi/10.1126/science.add2187) [[Code]](https://github.com/dauparas/ProteinMPNN)
+
+*   **ESMFold / ESM-2 (Structure Prediction)**:
+    Lin, Z., et al. (2023). Evolutionary-scale prediction of atomic-level protein structure with a language model. *Science*, 379(6637), 1123-1130.
+    [[Paper]](https://www.science.org/doi/10.1126/science.ade2574) [[Code]](https://github.com/facebookresearch/esm)
+
+*   **TM-score & TM-align (Structure Alignment)**:
+    Zhang, Y., & Skolnick, J. (2005). TM-align: a protein structure alignment algorithm based on the TM-score. *Nucleic Acids Research*, 33(7), 2302-2309.
+    [[Paper]](https://academic.oup.com/nar/article/33/7/2302/2401364) [[Code]](https://zhanggroup.org/TM-align/)
+
+## Gallery
+
+### Generation Process
+![Generation Process](process.gif)
+
+### Novel Structure Examples
+![Novel Structures](genie_structure_examples_novel.png)
+
+### Design Space Analysis
+![Design Space MDS](genie_design_space_mds_hybrid.png)
+
+### Comprehensive Analysis
+![Analysis Results](genie_analysis_figure2_repro_v2_hybrid.png)
+
+
+

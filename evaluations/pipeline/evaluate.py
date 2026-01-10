@@ -50,4 +50,16 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--config', type=str, help='Config file (ignored but accepted for compatibility)')
 
     args = parser.parse_args()
-    main(args)
+    try:
+        main(args)
+    except RuntimeError as e:
+        if 'out of memory' in str(e).lower():
+            print('\n' + '='*60)
+            print('CRITICAL ERROR: CUDA Out of Memory (OOM) during evaluation.')
+            print('='*60)
+            print('This pipeline uses ESMFold which is memory intensive.')
+            print('Try freeing up GPU memory or running on a GPU with more VRAM.')
+            print('='*60 + '\n')
+            sys.exit(1)
+        else:
+            raise e

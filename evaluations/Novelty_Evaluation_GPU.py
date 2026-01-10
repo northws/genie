@@ -207,13 +207,13 @@ def process_design(i, design_paths, ref_paths_all, candidate_indices_list):
     return f"{domain},{max_tm},{best_ref}\n"
 
 def main():
+    global RAW_DESIGN_DIR, OUTPUT_CSV, REF_DB_DIR
+
     parser = argparse.ArgumentParser(description="Hybrid GPU Screening")
     parser.add_argument("-i", "--input_dir", type=str, default=RAW_DESIGN_DIR, help="Input directory containing PDB designs")
     parser.add_argument("-o", "--output_csv", type=str, default=None, help="Output CSV file path")
     parser.add_argument("-r", "--ref_dir", type=str, default=REF_DB_DIR, help="Reference database directory")
     args = parser.parse_args()
-
-    global RAW_DESIGN_DIR, OUTPUT_CSV, REF_DB_DIR
     
     # Auto-detect designs folder if user points to parent directory
     if os.path.exists(os.path.join(args.input_dir, "designs")):
@@ -313,4 +313,17 @@ def main():
 
 if __name__ == "__main__":
     multiprocessing.set_start_method('spawn') 
-    main()
+    try:
+        main()
+    except RuntimeError as e:
+        if 'out of memory' in str(e).lower():
+            print('\n' + '='*60)
+            print('CRITICAL ERROR: CUDA Out of Memory (OOM) during screening.')
+            print('='*60)
+            print('Suggestions:')
+            print('1. Reduce BATCH_SIZE in the script (currently defined as constant).')
+            print('2. Check if other processes are using the GPU.')
+            print('='*60 + '\n')
+            sys.exit(1)
+        else:
+            raise e

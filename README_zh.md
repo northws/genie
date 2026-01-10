@@ -141,3 +141,46 @@ python evaluations/pipeline/evaluate.py \
 -   `packages/`: 外部工具 (TMscore)。
 -   `scripts/`: 设置用的实用脚本。
 -   `weights/`: 预训练模型权重。
+
+## 引用与致谢 (Citations and Acknowledgements)
+
+本项目构建于多个优秀的开源项目成果之上。
+
+### 核心算法与模型
+*   **Genie (Original Implementation)**:
+    Lin, Y. C., & AlQuraishi, M. (2023). Generating protein backbone structures with equivariant diffusion models. *arXiv preprint arXiv:2301.12485*.
+    [[Paper]](https://arxiv.org/abs/2301.12485) [[Code]](https://github.com/aqlaboratory/genie)
+
+*   **Flash-IPA (Optimization)**:
+    Flagship Pioneering. (2023). Flash-IPA: Accelerated Invariant Point Attention. GitHub.
+    [[Code]](https://github.com/flagshippioneering/flash_ipa)
+
+### 评估流程 (Evaluation Pipeline)
+*   **ProteinMPNN (Sequence Design)**:
+    Dauparas, J., et al. (2022). Robust deep learning–based protein sequence design using ProteinMPNN. *Science*, 378(6615), 49-56.
+    [[Paper]](https://www.science.org/doi/10.1126/science.add2187) [[Code]](https://github.com/dauparas/ProteinMPNN)
+
+*   **ESMFold / ESM-2 (Structure Prediction)**:
+    Lin, Z., et al. (2023). Evolutionary-scale prediction of atomic-level protein structure with a language model. *Science*, 379(6637), 1123-1130.
+    [[Paper]](https://www.science.org/doi/10.1126/science.ade2574) [[Code]](https://github.com/facebookresearch/esm)
+
+*   **TM-score & TM-align (Structure Alignment)**:
+    Zhang, Y., & Skolnick, J. (2005). TM-align: a protein structure alignment algorithm based on the TM-score. *Nucleic Acids Research*, 33(7), 2302-2309.
+    [[Paper]](https://academic.oup.com/nar/article/33/7/2302/2401364) [[Code]](https://zhanggroup.org/TM-align/)
+
+## 图库 (Gallery)
+
+### 生成过程 (Generation Process)
+![生成过程](process.gif)
+
+### 创新结构示例 (Novel Structure Examples)
+![创新结构](genie_structure_examples_novel.png)
+
+### 设计空间分析 (Design Space Analysis)
+![设计空间 MDS](genie_design_space_mds_hybrid.png)
+
+### 综合分析 (Comprehensive Analysis)
+![分析结果](genie_analysis_figure2_repro_v2_hybrid.png)
+
+
+

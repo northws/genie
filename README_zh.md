@@ -163,7 +163,7 @@ python evaluations/pipeline/evaluate.py \
     - `--length_tolerance`：长度预筛选容差（默认 `0.3` 表示 ±30%）。
     - `--early_stop_tm`：提前停止阈值（默认 `0.5`），当发现 TM 超过该值时可停止搜索（视为“不新颖”）。
     - `--no_early_stop`：关闭提前停止，改为精确搜索最大 TM。
-    - `--no_length_filter`：关闭长度预筛选。
+    - `--enable_length_filter`：开启长度预筛选（默认关闭）。
 
 *   **GPU 版本（混合方法，快速筛选）(evaluations/Novelty_Evaluation_GPU.py)：**
 
@@ -178,6 +178,8 @@ python evaluations/pipeline/evaluate.py \
     - `-i, --input_dir`：输入目录（包含 PDB 设计）。若目录下存在 `designs/` 子目录会自动切换到该子目录。
     - `-o, --output_csv`：输出 CSV 路径。默认：在评估目录（或 `designs/` 的父目录）生成 `novelty_hybrid.csv`。
     - `-r, --ref_dir`：参考数据库目录。
+    - `--length_tolerance`：长度预筛选容差（默认 `0.3` 表示 ±30%）。
+    - `--enable_length_filter`：开启长度预筛选（默认关闭）。
 
 #### 绘图分析 (Plotting Analysis)
 

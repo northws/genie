@@ -70,8 +70,8 @@ class T:
         if (type(index) != tuple):
             index = (index,)
         return T(
-            self.rots[index + (slice(None), slice(None))],
-            self.trans[index + (slice(None),)]
+            self.rots[tuple(index) + (slice(None), slice(None))],
+            self.trans[tuple(index) + (slice(None),)]
         )
 
     def __eq__(self, obj):

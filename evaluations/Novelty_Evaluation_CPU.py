@@ -63,8 +63,10 @@ def build_ref_length_index(refs):
     print(f"Indexed {sum(len(v) for v in length_index.values())} references by length.")
     return length_index
 
-def get_refs_by_length(design_length, length_index, tolerance=LENGTH_TOLERANCE):
+def get_refs_by_length(design_length, length_index, tolerance=None):
     """Get references within length tolerance of design."""
+    if tolerance is None:
+        tolerance = LENGTH_TOLERANCE
     min_len = int(design_length * (1 - tolerance))
     max_len = int(design_length * (1 + tolerance))
     filtered_refs = []
@@ -159,8 +161,8 @@ def parse_args():
                         help="TM-score threshold for early stopping (default: 0.5)")
     parser.add_argument("--no_early_stop", action="store_true",
                         help="Disable early stopping (find exact max TM)")
-    parser.add_argument("--no_length_filter", action="store_true",
-                        help="Disable length-based pre-filtering")
+    parser.add_argument("--enable_length_filter", action="store_true",
+                        help="Enable length-based pre-filtering")
     return parser.parse_args()
 
 def main():
@@ -174,7 +176,7 @@ def main():
     LENGTH_TOLERANCE = args.length_tolerance
     EARLY_STOP_TM = args.early_stop_tm
     ENABLE_EARLY_STOP = not args.no_early_stop
-    use_length_filter = not args.no_length_filter
+    use_length_filter = args.enable_length_filter
     
     # 1. Setup Input Directory
     if args.input_dir:

@@ -34,7 +34,7 @@ ENABLE_EARLY_STOP = True  # Enable early stopping for faster novelty detection
 
 # Length filtering optimization
 LENGTH_TOLERANCE = 0.3  # Only compare structures with length within ±30%
-ENABLE_LENGTH_FILTER = True  # Enable length-based pre-filtering
+ENABLE_LENGTH_FILTER = False  # Enable length-based pre-filtering
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -205,7 +205,7 @@ def compute_embeddings(model, pdb_files):
     if not all_embeddings: return None, []
     return torch.cat(all_embeddings, dim=0), valid_files_out
 
-def process_design(i, design_paths, ref_paths_all, candidate_indices_list):
+def process_design(i, design_paths, ref_paths_all, candidate_indices_list, length_tolerance=0.3, enable_length_filter=False):
     d_path = design_paths[i]
     domain = os.path.basename(d_path).replace(".pdb", "")
     
@@ -220,9 +220,9 @@ def process_design(i, design_paths, ref_paths_all, candidate_indices_list):
     
     # Length filtering: get design length
     design_length = get_pdb_length(d_path)
-    if ENABLE_LENGTH_FILTER and design_length > 0:
-        min_len = int(design_length * (1 - LENGTH_TOLERANCE))
-        max_len = int(design_length * (1 + LENGTH_TOLERANCE))
+    if enable_length_filter and design_length > 0:
+        min_len = int(design_length * (1 - length_tolerance))
+        max_len = int(design_length * (1 + length_tolerance))
     else:
         min_len, max_len = 0, float('inf')
     
@@ -232,7 +232,7 @@ def process_design(i, design_paths, ref_paths_all, candidate_indices_list):
             continue
         
         # Length filter: skip references with very different lengths
-        if ENABLE_LENGTH_FILTER and design_length > 0:
+        if enable_length_filter and design_length > 0:
             # Use cache for reference lengths
             if ref_p not in PDB_LENGTH_CACHE:
                 PDB_LENGTH_CACHE[ref_p] = get_pdb_length(ref_p)
@@ -269,7 +269,14 @@ def main():
     parser.add_argument("-i", "--input_dir", type=str, default=RAW_DESIGN_DIR, help="Input directory containing PDB designs")
     parser.add_argument("-o", "--output_csv", type=str, default=None, help="Output CSV file path")
     parser.add_argument("-r", "--ref_dir", type=str, default=REF_DB_DIR, help="Reference database directory")
+    parser.add_argument("--length_tolerance", type=float, default=0.3, help="Length tolerance ratio (default: 0.3)")
+    parser.add_argument("--enable_length_filter", action="store_true", help="Enable length-based pre-filtering")
     args = parser.parse_args()
+
+    # Update Globals based on args
+    global LENGTH_TOLERANCE, ENABLE_LENGTH_FILTER
+    LENGTH_TOLERANCE = args.length_tolerance
+    ENABLE_LENGTH_FILTER = args.enable_length_filter
     
     # Auto-detect designs folder if user points to parent directory
     if os.path.exists(os.path.join(args.input_dir, "designs")):
@@ -373,7 +380,7 @@ def main():
     num_designs = len(design_names)
     indices = list(range(num_designs))
     
-    worker = functools.partial(process_design, design_paths=design_names, ref_paths_all=ref_names, candidate_indices_list=top_idxs)
+    worker = functools.partial(process_design, design_paths=design_names, ref_paths_all=ref_names, candidate_indices_list=top_idxs, length_tolerance=LENGTH_TOLERANCE, enable_length_filter=ENABLE_LENGTH_FILTER)
     
     N_WORKERS = 20
     print(f"Running TMalign verification with {N_WORKERS} workers...")

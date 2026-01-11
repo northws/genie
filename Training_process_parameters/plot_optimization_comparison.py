@@ -80,7 +80,7 @@ axes[2].set_ylabel('Training Loss')
 axes[2].set_title('Training Loss Convergence (Moving Avg)')
 axes[2].legend()
 axes[2].grid(True, linestyle='--', alpha=0.3)
-axes[2].set_ylim(0.5, 1.5) # Zoom in to relevant range
+axes[2].set_ylim(0.7, 1.05) # Zoom in to relevant range
 
 plt.tight_layout()
 plt.savefig('optimization_comparison.png', dpi=300, bbox_inches='tight')

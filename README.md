@@ -20,7 +20,10 @@ This project is a reproduction and optimization of [https://github.com/aqlaborat
     ```bash
     pip install -e .
     ```
-
+    If you encounter any issues while setting up the environment, you can also directly use the Docker image we provide.
+    ```bash
+    docker pull ghcr.io/northws/genie:v1
+    ```
 3.  **Setup Data (Optional):**
     For training, you need to download and preprocess the SCOPe dataset.
     ```bash
@@ -274,7 +277,8 @@ This project is built upon several excellent open-source projects and academic r
 
 ![Optimization Comparison](Training_process_parameters/optimization_comparison.png)
 
-We compared the training process parameters between the original implementation and our optimized version (files located in `Training_process_parameters/`).
+We compared the training process parameters between the original implementation and our optimized version (files located in `Training_process_parameters/`).We provide the models from this reproduction and optimized training in the [release](.release).
+
 
 **Hardware Configuration:**
 *   **GPU:** RTX 5090 (32GB) * 1

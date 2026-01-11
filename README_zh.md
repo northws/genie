@@ -15,16 +15,19 @@ Genie 是一个基于扩散模型的蛋白质从头设计工具，通过对定�
 2.  **安装依赖：**
     建议使用虚拟环境（如 Conda 或 venv）。
     ```bash
+    docker pull ghcr.io/northws/genie:v1
+    ```
+    如果你在安装环境过程中出现问题你也可以直接使用我们提供的docker镜像。
+    ```bash
     pip install -e .
     ```
-
-3.  **设置数据（可选）：**
+4.  **设置数据（可选）：**
     如果是为了训练，你需要下载并预处理 SCOPe 数据集。
     ```bash
     bash scripts/install_dataset.sh
     ```
 
-4.  **外部工具：**
+5.  **外部工具：**
     本仓库在 `packages/TMscore/` 目录下包含了 `TMscore` 和 `TMalign` 的二进制文件。请确保它们具有执行权限：
     ```bash
     chmod +x packages/TMscore/TMscore packages/TMscore/TMalign
@@ -273,7 +276,7 @@ python evaluations/plot.py -i runs/.../evaluations -p mds -o outputs/plots
 
 ![优化对比](Training_process_parameters/optimization_comparison.png)
 
-我们对比了原始实现与本优化版本的训练过程参数（数据位于 `Training_process_parameters/` 文件夹中）。
+我们对比了原始实现与本优化版本的训练过程参数（数据位于 `Training_process_parameters/` 文件夹中）。我们在[release](.release)中提供本次复现和优化训练得到的模型
 
 **硬件配置:**
 *   **GPU:** RTX 5090 (32GB) * 1

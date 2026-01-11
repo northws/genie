@@ -65,7 +65,11 @@ class Config:
 			'structure_transition_dropout': float(config.get('structureTransitionDropout',              0.1)),
 			'use_flash_ipa':                      config.get('useFlashIPA',                             True),
 			'max_n_res':                          self.io['max_n_res'],
-			'use_grad_checkpoint':                config.get('useGradientCheckpointing',                False) # Optimization: Default to False for speed
+			'use_grad_checkpoint':                config.get('useGradientCheckpointing',                False), # Optimization: Default to False for speed
+			
+			# Flash IPA specific parameters (only used when useFlashMode=True)
+			'z_factor_rank':                  int(config.get('zFactorRank',                             2)),
+			'k_neighbors':                    int(config.get('kNeighbors',                              10)),
 
 		}
 
@@ -76,6 +80,8 @@ class Config:
 			'num_workers':              int(config.get('numWorkers',             4)),
 			'log_every_n_step':         int(config.get('logEverySteps',          1000)),
 			'checkpoint_every_n_epoch': int(config.get('checkpointEveryEpoches', 500)),
+			'use_grad_checkpoint':          config.get('useGradientCheckpointing', False),
+			'use_flash_mode':               config.get('useFlashMode',             False),  # Memory-efficient Flash IPA mode
 		}
 
 		self.optimization = {

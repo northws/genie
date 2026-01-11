@@ -55,12 +55,56 @@ python genie/train.py \
 - `-g, --gpus`：使用的 GPU 设备，例如 `"0"` 或 `"0,1"`，通常用于控制 `CUDA_VISIBLE_DEVICES` / 多卡选择。
 - `-r, --resume`：断点续训的 checkpoint（`.ckpt`）文件路径。
 
+**Flash-IPA 优化：**
+
+本实现包含两种 Flash-IPA 模式：
+
+**模式 1：标准 Flash-IPA** (`useFlashIPA True`)
+
+系统会根据以下条件自动判断是否启用 Flash-IPA：
+
+| 条件 | Flash-IPA 状态 |
+| :--- | :--- |
+| 未安装 `flash_ipa` 包 | 禁用（回退到标准 IPA） |
+| 未指定 `max_n_res` | 禁用（回退到标准 IPA） |
+| `max_n_res <= 512` | 禁用（对短序列开销大于收益） |
+| `max_n_res > 512` 且已安装包 | **启用** |
+
+**模式 2：内存高效 Flash 模式** (`useFlashMode True`)
+
+对于长序列且显存受限的情况，启用内存高效 Flash 模式：
+
+```
+useFlashMode True
+zFactorRank 2
+kNeighbors 10
+```
+
+该模式通过以下方式显著节省显存：
+- 使用 EdgeEmbedder 的 `flash_1d_bias` 模式（边特征从 O(L²) 降至 O(L)）
+- 跳过 PairTransformNet（三角注意力/乘法）
+- 在每个结构层中动态计算边特征
+
+| 特性 | 标准模式 | Flash 模式 |
+| :--- | :--- | :--- |
+| Pair Embeddings 显存 | O(L²) | O(L) |
+| 三角注意力 | ✅ 启用 | ❌ 禁用 |
+| 适用场景 | 短序列 (<512) | 长序列 (512+) |
+| 模型参数量 | ~6.4M | ~3.1M |
+
+**Flash 模式配置参数：**
+- `useFlashMode`：启用内存高效 Flash 模式（默认：`False`）
+- `zFactorRank`：边嵌入分解的秩（默认：`2`）
+- `kNeighbors`：距离图的最近邻数量（默认：`10`）
+
 ### 2. 采样 (Sampling)
 
 使用预训练模型生成蛋白质骨架。
 
 **关于预训练权重的说明：**
 提供的 `weights/` 目录包含检查点文件。采样脚本需要特定的目录结构（例如 `runs/<model_name>/version_<X>/checkpoints/`）。你可能需要调整权重文件的结构，或者直接使用提供的 Jupyter Notebook，它会自动处理这个问题。
+
+#### 标准采样
 
 标准命令：
 ```bash
@@ -74,19 +118,49 @@ python genie/sample.py \
     --gpu 0
 ```
 
+#### Flash 模式采样（省显存）
+
+对于长序列（>256 残基）或显存有限的 GPU，使用 Flash 模式：
+
+```bash
+python genie/sample.py \
+    --rootdir runs \
+    --model_name scope_l_256 \
+    --flash_mode \
+    --batch_size 3 \
+    --max_length 256 \
+    --gpu 0
+```
+
+或使用专用的 Flash 采样脚本获得更多控制：
+
+```bash
+python genie/flash_sample.py \
+    --rootdir runs \
+    --model_name scope_l_256 \
+    --flash_mode \
+    --batch_size 5 \
+    --min_length 50 \
+    --max_length 256 \
+    --gpu 0
+```
+
+**注意：** Flash 模式采样最好与使用 `useFlashMode True` 训练的模型配合使用。当对标准训练的检查点使用 Flash 模式时，部分权重（PairTransformNet）将被随机初始化，这可能影响生成质量。
+
 **参数说明 (genie/sample.py)：**
 
 - `-n, --model_name`（必选）：模型名称（对应 `runs/<model_name>/...` 的目录名）。
 - `-r, --rootdir`（默认：`runs`）：运行目录根路径（包含 `runs/<model_name>/...` 结构）。
 - `-v, --model_version`：模型版本号（对应 `runs/<model_name>/version_<N>/...`）。
 - `-e, --model_epoch`：加载的 checkpoint 对应 epoch（用于选择 checkpoint）。
-- `-g, --gpu`：使用的 GPU 编号。注意该参数的值是“可选”的：写 `--gpu` 等价于 `--gpu 0`；写 `--gpu 1` 则使用 GPU 1。
+- `-g, --gpu`：使用的 GPU 编号。注意该参数的值是"可选"的：写 `--gpu` 等价于 `--gpu 0`；写 `--gpu 1` 则使用 GPU 1。
 - `--batch_size`（默认：`5`）：每个 batch 生成的样本数。
 - `--num_batches`（默认：`2`）：生成的 batch 数，总样本数 = `batch_size * num_batches`。
 - `--noise_scale`（默认：`0.6`）：采样噪声强度，影响随机性/多样性。
 - `--min_length`（默认：`50`）：采样长度下限。
 - `--max_length`（默认：`128`）：采样长度上限。
 - `--save_trajectory`：是否保存扩散过程每个时间步的轨迹（`.npy`），用于生成动画可视化；会增加磁盘占用与耗时。
+- `--flash_mode`：启用 Flash IPA 进行省显存采样（推荐用于长序列）。
 
 ### 3. 可视化 (Visualization)
 
@@ -159,7 +233,7 @@ python evaluations/pipeline/evaluate.py \
     - `-o, --output_csv`：输出 CSV 路径。默认：`<input_dir>/novelty.csv`。
     - `--ref_dir`：参考数据库目录（例如 `data/pdbstyle-2.08`）。
     - `--tmalign`：`TMalign` 可执行文件路径。
-    - `--num_workers`：并行进程数。
+    - `--num_workers`：并行进程数（默认：2）。
     - `--length_tolerance`：长度预筛选容差（默认 `0.3` 表示 ±30%）。
     - `--early_stop_tm`：提前停止阈值（默认 `0.5`），当发现 TM 超过该值时可停止搜索（视为“不新颖”）。
     - `--no_early_stop`：关闭提前停止，改为精确搜索最大 TM。
@@ -178,6 +252,7 @@ python evaluations/pipeline/evaluate.py \
     - `-i, --input_dir`：输入目录（包含 PDB 设计）。若目录下存在 `designs/` 子目录会自动切换到该子目录。
     - `-o, --output_csv`：输出 CSV 路径。默认：在评估目录（或 `designs/` 的父目录）生成 `novelty_hybrid.csv`。
     - `-r, --ref_dir`：参考数据库目录。
+    - `--num_workers`：TM-align 验证步骤的并行进程数（默认：2）。
     - `--length_tolerance`：长度预筛选容差（默认 `0.3` 表示 ±30%）。
     - `--enable_length_filter`：开启长度预筛选（默认关闭）。
 

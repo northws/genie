@@ -153,8 +153,8 @@ def parse_args():
                         help=f"Reference database directory (default: {DEFAULT_REF_DB_DIR})")
     parser.add_argument("--tmalign", type=str, default=DEFAULT_TMALIGN_EXEC, 
                         help=f"Path to TMalign executable (default: {DEFAULT_TMALIGN_EXEC})")
-    parser.add_argument("--num_workers", type=int, default=os.cpu_count(),
-                        help="Number of worker processes")
+    parser.add_argument("--num_workers", type=int, default=2,
+                        help="Number of worker processes (default: 2)")
     parser.add_argument("--length_tolerance", type=float, default=0.3,
                         help="Length tolerance for pre-filtering (default: 0.3 = ±30%%)")
     parser.add_argument("--early_stop_tm", type=float, default=0.5,
@@ -206,6 +206,12 @@ def main():
     REF_DB_DIR = args.ref_dir
     TMALIGN_EXEC = args.tmalign
     NUM_WORKERS = args.num_workers
+
+    available_cpu = os.cpu_count()
+    print(f"Using {NUM_WORKERS} workers.")
+    print(f"System has {available_cpu} available CPU cores.")
+    if NUM_WORKERS < available_cpu:
+        print(f"Tip: You can increase performance by setting --num_workers to a higher value (e.g., --num_workers {available_cpu})")
 
     if not os.path.exists(TMALIGN_EXEC):
         print(f"Error: TMalign not found at {TMALIGN_EXEC}")

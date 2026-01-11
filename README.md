@@ -58,12 +58,56 @@ python genie/train.py \
 
 Configuration files define model hyperparameters and training settings. See `genie/config.py` for details.
 
+**Flash-IPA Optimization:**
+
+This implementation includes two Flash-IPA modes:
+
+**Mode 1: Standard Flash-IPA** (`useFlashIPA True`)
+
+The system automatically determines whether to use Flash-IPA based on the following conditions:
+
+| Condition | Flash-IPA Status |
+| :--- | :--- |
+| `flash_ipa` package not installed | Disabled (fallback to standard IPA) |
+| `max_n_res` not specified | Disabled (fallback to standard IPA) |
+| `max_n_res <= 512` | Disabled (overhead outweighs benefits for short sequences) |
+| `max_n_res > 512` and package installed | **Enabled** |
+
+**Mode 2: Memory-Efficient Flash Mode** (`useFlashMode True`)
+
+For long sequences where memory is a constraint, enable the memory-efficient Flash mode:
+
+```
+useFlashMode True
+zFactorRank 2
+kNeighbors 10
+```
+
+This mode provides significant memory savings by:
+- Using EdgeEmbedder with `flash_1d_bias` mode (O(L) instead of O(L²) for edge features)
+- Skipping PairTransformNet (triangular attention/multiplication)
+- Computing edge features on-the-fly in each structure layer
+
+| Feature | Standard Mode | Flash Mode |
+| :--- | :--- | :--- |
+| Pair Embeddings Memory | O(L²) | O(L) |
+| Triangular Attention | ✅ Enabled | ❌ Disabled |
+| Suitable for | Short sequences (<512) | Long sequences (512+) |
+| Model Parameters | ~6.4M | ~3.1M |
+
+**Configuration Parameters for Flash Mode:**
+- `useFlashMode`: Enable memory-efficient Flash mode (default: `False`)
+- `zFactorRank`: Rank for edge embedding factorization (default: `2`)
+- `kNeighbors`: Number of nearest neighbors for distogram (default: `10`)
+
 ### 2. Sampling
 
 To generate protein backbones using a pre-trained model.
 
 **Note on Pre-trained Weights:**
 The provided `weights/` directory contains checkpoint files. The sampling script expects a specific directory structure (e.g., `runs/<model_name>/version_<X>/checkpoints/`). You may need to restructure the weights or use the provided Jupyter Notebook which handles this automatically.
+
+#### Standard Sampling
 
 Standard command:
 ```bash
@@ -76,6 +120,35 @@ python genie/sample.py \
     --num_batches 1 \
     --gpu 0
 ```
+
+#### Flash Mode Sampling (Memory-Efficient)
+
+For sampling long sequences (>256 residues) or on GPUs with limited memory, use Flash mode:
+
+```bash
+python genie/sample.py \
+    --rootdir runs \
+    --model_name scope_l_256 \
+    --flash_mode \
+    --batch_size 3 \
+    --max_length 256 \
+    --gpu 0
+```
+
+Or use the dedicated Flash sampling script for more control:
+
+```bash
+python genie/flash_sample.py \
+    --rootdir runs \
+    --model_name scope_l_256 \
+    --flash_mode \
+    --batch_size 5 \
+    --min_length 50 \
+    --max_length 256 \
+    --gpu 0
+```
+
+**Note:** Flash mode for sampling works best with models trained using `useFlashMode True`. When using Flash mode with a standard-trained checkpoint, some weights (PairTransformNet) will be randomly initialized, which may affect generation quality.
 
 **Arguments (genie/sample.py):**
 
@@ -90,6 +163,7 @@ python genie/sample.py \
 - `--min_length` (default: `50`): Minimum sequence length to sample.
 - `--max_length` (default: `128`): Maximum sequence length to sample.
 - `--save_trajectory`: If set, saves intermediate diffusion timesteps (trajectory `.npy`) for visualization. Adds disk usage and runtime.
+- `--flash_mode`: Enable Flash IPA for memory-efficient sampling (recommended for long sequences).
 
 ### 3. Visualization
 
@@ -161,7 +235,7 @@ To calculate the novelty of generated designs (TM-score against a reference data
     - `-o, --output_csv`: Output CSV path. Default: `<input_dir>/novelty.csv`.
     - `--ref_dir`: Reference database directory (e.g., `data/pdbstyle-2.08`).
     - `--tmalign`: Path to the `TMalign` executable.
-    - `--num_workers`: Number of worker processes for parallel TM-align computations.
+    - `--num_workers`: Number of worker processes for parallel TM-align computations (default: 2).
     - `--length_tolerance`: Pre-filter tolerance by length (default `0.3` means ±30%).
     - `--early_stop_tm`: Early-stop threshold (default `0.5`): stop searching once TM exceeds this value (treat as “not novel”).
     - `--no_early_stop`: Disable early stopping and search for the exact maximum TM.
@@ -179,6 +253,7 @@ To calculate the novelty of generated designs (TM-score against a reference data
     - `-i, --input_dir`: Input directory containing PDB designs. If the directory contains a `designs/` subfolder, it will be auto-detected.
     - `-o, --output_csv`: Output CSV path. Default: `novelty_hybrid.csv` written into the evaluation directory (or the parent of `designs/`).
     - `-r, --ref_dir`: Reference database directory.
+    - `--num_workers`: Number of worker processes for parallel TM-align verification (default: 2).
 
 
 #### Plotting Analysis

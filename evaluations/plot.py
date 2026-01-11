@@ -332,17 +332,17 @@ def plot_structures(input_dir, output_file="genie_structure_examples_novel.png")
     Structures are colored by N->C terminus gradient.
     """
     # Handle directory structure
+    # First check if designs/ subfolder exists
     designs_dir = os.path.join(input_dir, "designs")
     if not os.path.exists(designs_dir):
+        # No designs/ subfolder, PDB files are directly in input_dir
         designs_dir = input_dir
-        run_dir = os.path.dirname(input_dir)
-    else:
-        run_dir = input_dir
     
-    info_path = os.path.join(run_dir, "info.csv")
-    novelty_path = os.path.join(run_dir, "novelty_hybrid.csv")
+    # info.csv and novelty.csv should be in input_dir
+    info_path = os.path.join(input_dir, "info.csv")
+    novelty_path = os.path.join(input_dir, "novelty_hybrid.csv")
     if not os.path.exists(novelty_path):
-        novelty_path = os.path.join(run_dir, "novelty.csv")
+        novelty_path = os.path.join(input_dir, "novelty.csv")
     
     # Load and select top novel structures
     print("Loading data...")

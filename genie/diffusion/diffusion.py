@@ -6,6 +6,13 @@ from pytorch_lightning.core import LightningModule
 
 from genie.model.model import Denoiser
 
+# Conditional import for Flash Denoiser
+try:
+    from genie.model.flash_denoiser import FlashDenoiser
+    HAS_FLASH_DENOISER = True
+except ImportError:
+    HAS_FLASH_DENOISER = False
+
 
 class Diffusion(LightningModule, ABC):
 
@@ -13,11 +20,38 @@ class Diffusion(LightningModule, ABC):
 		super(Diffusion, self).__init__()
 
 		self.config = config
-
-		self.model = Denoiser(
-			**self.config.model,
-			n_timestep=self.config.diffusion['n_timestep']
-		)
+		
+		# Determine whether to use Flash mode
+		use_flash_mode = config.training.get('use_flash_mode', False)
+		max_n_res = config.io.get('max_n_res', 256)
+		
+		if use_flash_mode:
+			if not HAS_FLASH_DENOISER:
+				print("Warning: use_flash_mode=True but flash_ipa not installed. Falling back to standard Denoiser.")
+				use_flash_mode = False
+			else:
+				print(f"Using FlashDenoiser (memory-efficient mode) for max_n_res={max_n_res}")
+		
+		if use_flash_mode and HAS_FLASH_DENOISER:
+			# Use memory-efficient Flash Denoiser
+			# Extract only the parameters FlashDenoiser needs from config.model
+			# (avoid duplicating max_n_res which is already in config.model)
+			model_params = {k: v for k, v in self.config.model.items() 
+			               if k not in ['max_n_res', 'use_flash_ipa', 'use_grad_checkpoint', 'z_factor_rank', 'k_neighbors']}
+			self.model = FlashDenoiser(
+				**model_params,
+				n_timestep=self.config.diffusion['n_timestep'],
+				max_n_res=max_n_res,
+				z_factor_rank=config.model.get('z_factor_rank', 2),
+				k_neighbors=config.model.get('k_neighbors', 10),
+				use_grad_checkpoint=config.training.get('use_grad_checkpoint', False)
+			)
+		else:
+			# Use standard Denoiser
+			self.model = Denoiser(
+				**self.config.model,
+				n_timestep=self.config.diffusion['n_timestep']
+			)
 		
 
 

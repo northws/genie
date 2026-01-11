@@ -25,7 +25,7 @@ INFO_CSV = os.path.join(RUN_DIR, "info.csv")
 # Constants
 K_NEIGHBORS = 30 
 BATCH_SIZE = 25 
-TOP_K_SCREEN = 1000  # Increased from 150 for better recall
+TOP_K_SCREEN = 2000  # Increased from 150 for better recall
 SIM_CHUNK_SIZE = 5000  # Chunk size for similarity computation to avoid OOM
 
 # Early stopping optimization
@@ -271,6 +271,7 @@ def main():
     parser.add_argument("-r", "--ref_dir", type=str, default=REF_DB_DIR, help="Reference database directory")
     parser.add_argument("--length_tolerance", type=float, default=0.3, help="Length tolerance ratio (default: 0.3)")
     parser.add_argument("--enable_length_filter", action="store_true", help="Enable length-based pre-filtering")
+    parser.add_argument("--num_workers", type=int, default=2, help="Number of workers for TMalign (default: 2)")
     args = parser.parse_args()
 
     # Update Globals based on args
@@ -382,8 +383,12 @@ def main():
     
     worker = functools.partial(process_design, design_paths=design_names, ref_paths_all=ref_names, candidate_indices_list=top_idxs, length_tolerance=LENGTH_TOLERANCE, enable_length_filter=ENABLE_LENGTH_FILTER)
     
-    N_WORKERS = 20
+    N_WORKERS = args.num_workers
+    available_cpu = multiprocessing.cpu_count()
     print(f"Running TMalign verification with {N_WORKERS} workers...")
+    print(f"System has {available_cpu} available CPU cores.")
+    if N_WORKERS < available_cpu:
+         print(f"Tip: You can increase performance by setting --num_workers to a higher value (e.g., --num_workers {available_cpu})")
     
     results = []
     with Pool(N_WORKERS) as p:

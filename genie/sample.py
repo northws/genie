@@ -18,8 +18,17 @@ def main(args):
 	# device
 	device = 'cuda:{}'.format(args.gpu) if args.gpu is not None else 'cpu'
 
-	# model
-	model = load_model(args.rootdir, args.model_name, args.model_version, args.model_epoch).to(device)
+	# model - use Flash mode if specified
+	if args.flash_mode:
+		# Use Flash mode for memory-efficient sampling
+		from genie.flash_sample import load_flash_model
+		model = load_flash_model(
+			args.rootdir, args.model_name, args.model_version, args.model_epoch,
+			force_flash=True
+		).to(device)
+		print("Flash mode enabled for memory-efficient sampling")
+	else:
+		model = load_model(args.rootdir, args.model_name, args.model_version, args.model_epoch).to(device)
 
 	# output directory
 	outdir = os.path.join(model.rootdir, model.name, 'version_{}'.format(model.version), 'samples')
@@ -82,6 +91,8 @@ if __name__ == '__main__':
 	parser.add_argument('--min_length', type=int, help='Minimum length', default=50)
 	parser.add_argument('--max_length', type=int, help='Maximum length', default=128)
 	parser.add_argument('--save_trajectory', action='store_true', help='Save all timesteps for visualization')
+	parser.add_argument('--flash_mode', action='store_true', 
+						help='Enable Flash IPA for memory-efficient sampling (recommended for long sequences)')
 	args = parser.parse_args()
 
 	# run
@@ -98,6 +109,7 @@ if __name__ == '__main__':
 			print('Suggestions:')
 			print('1. Reduce --batch_size')
 			print('2. Reduce --max_length')
+			print('3. Enable --flash_mode for memory-efficient sampling')
 			print('='*60 + '\n')
 			sys.exit(1)
 		else:

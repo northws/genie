@@ -74,13 +74,21 @@ def main(args):
     # model
     model = Genie(config)
 
+    # Determine DDP strategy based on Flash mode
+    # Flash mode may have unused parameters (PairTransformNet params in PairFeatureNet)
+    use_flash_mode = config.training.get('use_flash_mode', False)
+    if use_flash_mode:
+        ddp_strategy = 'ddp_find_unused_parameters_true'
+    else:
+        ddp_strategy = 'ddp'
+
     # trainer
     trainer = Trainer(
         accelerator=accelerator,  # [Updated] Explicit accelerator definition
         devices=gpus,  # [Updated] Replaces the old 'gpus' arg
         logger=[tb_logger, wandb_logger],
-        strategy='ddp',
-        # 'ddp' is fine, usually explicitly handling unused params is safer for complex models
+        strategy=ddp_strategy,
+        # Flash mode requires find_unused_parameters=True due to skipped PairTransformNet
 
         # [Optimization] Tensor Core Support
         # '16-mixed' uses FP16 for matmul (Tensor Cores) and FP32 for stability.

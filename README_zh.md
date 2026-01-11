@@ -297,11 +297,6 @@ python evaluations/plot.py -i runs/.../evaluations -p mds -o outputs/plots
 
 我们将优化后的模型与原版数据在生成能力上进行了可视化对比。结果表明，优化后的模型保持了相当的生成质量。
 
-**设计空间分析 (Design Space Analysis - MDS):**
-
-| 原始工作 (Original Work) | 本工作 (This Work - Optimized) |
-| :---: | :---: |
-| ![Original MDS](Training_process_parameters/origin_work_mds_hybrid.png) | ![Optimized MDS](Training_process_parameters/this_work_mds_hybrid.png) |
 
 **综合分析 (Comprehensive Analysis):**
 

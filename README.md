@@ -299,11 +299,6 @@ The optimization reduced training time by half and GPU memory usage by approxima
 
 We compared the generative quality of the original implementation and our optimized version. The results show that the optimized model maintains comparable generative capabilities.
 
-**Design Space Analysis (MDS):**
-
-| Original Work | This Work (Optimized) |
-| :---: | :---: |
-| ![Original MDS](Training_process_parameters/origin_work_mds_hybrid.png) | ![Optimized MDS](Training_process_parameters/this_work_mds_hybrid.png) |
 
 **Comprehensive Analysis:**
 

@@ -101,12 +101,20 @@ def main(args):
 
         deterministic=False,  # [Optimization] Changed to False for speed unless reproducibility is strictly required
         enable_progress_bar=True,  # Changed to True usually for UX, set False if running in strict pipeline
-        log_every_n_steps=config.training['log_every_n_step'],
+        log_every_n_steps=config.training['log_every_n_step'],  # Will be auto-adjusted if needed
         max_epochs=config.training['n_epoch'],
         callbacks=[checkpoint_callback, OOMMonitorCallback()]
     )
 
-    # run
+    # run - setup DataModule first to ensure dataset is initialized
+    dm.setup()
+    
+    # Auto-adjust log_every_n_steps if training batches are fewer
+    n_batches = len(dm.train_dataloader())
+    if trainer.log_every_n_steps > n_batches:
+        print(f"[Info] Adjusting log_every_n_steps from {trainer.log_every_n_steps} to {n_batches} (matching batch count)")
+        trainer.log_every_n_steps = max(1, n_batches)
+    
     trainer.fit(model, dm, ckpt_path=args.resume)
 
 

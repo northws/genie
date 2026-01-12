@@ -73,8 +73,7 @@ class FlashDenoiser(nn.Module):
                  z_factor_rank=2,
                  k_neighbors=10,
                  use_grad_checkpoint=False,
-                 use_flash_attn_3=True,  # Use FA3 on Hopper GPUs if available
-                 ipa_micro_batch_size=0  # Micro-batch size for IPA stability with large batches
+                 use_flash_attn_3=True  # Use FA3 on Hopper GPUs if available
                  ):
         super(FlashDenoiser, self).__init__()
         
@@ -96,8 +95,6 @@ class FlashDenoiser(nn.Module):
         print(f"  n_structure_layer: {n_structure_layer}")
         print(f"  n_structure_block: {n_structure_block}")
         print(f"  use_flash_attn_3: {use_flash_attn_3}")
-        if ipa_micro_batch_size > 0:
-            print(f"  ipa_micro_batch_size: {ipa_micro_batch_size} (large batch stability)")
         if n_pair_transform_layer > 0:
             print(f"  WARNING: n_pair_transform_layer={n_pair_transform_layer} is ignored in Flash mode")
         print("  PairTransformNet: DISABLED (O(L²) -> O(L) memory)")
@@ -139,8 +136,7 @@ class FlashDenoiser(nn.Module):
             z_factor_rank=z_factor_rank,
             k_neighbors=k_neighbors,
             use_grad_checkpoint=use_grad_checkpoint,
-            use_flash_attn_3=use_flash_attn_3,
-            ipa_micro_batch_size=ipa_micro_batch_size
+            use_flash_attn_3=use_flash_attn_3
         )
 
     def forward(self, ts, timesteps, mask):

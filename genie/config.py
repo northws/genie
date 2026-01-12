@@ -71,12 +71,6 @@ class Config:
 			'z_factor_rank':                  int(config.get('zFactorRank',                             2)),
 			'k_neighbors':                    int(config.get('kNeighbors',                              10)),
 			'use_flash_attn_3':                   config.get('useFlashAttn3',                           True),  # Use FA3 on Hopper GPUs if available
-			# Micro-batch size for IPA to maintain training stability with large batch sizes
-			# When batchSize > ipa_micro_batch_size, IPA processes in smaller chunks
-			# Recommended: 8-16 for large batch training (e.g., batchSize >= 64)
-			# Set to 0 to disable (use full batch)
-			'ipa_micro_batch_size':           int(config.get('ipaMicroBatchSize',                       0)),
-
 		}
 
 		self.training = {

@@ -15,11 +15,11 @@ Genie 是一个基于扩散模型的蛋白质从头设计工具，通过对定�
 2.  **安装依赖：**
     建议使用虚拟环境（如 Conda 或 venv）。
     ```bash
-    docker pull ghcr.io/northws/genie:v1
-    ```
-    如果你在安装环境过程中出现问题你也可以直接使用我们提供的docker镜像。
-    ```bash
     pip install -e .
+    ```
+    如果你在安装环境过程中出现问题你也可以直接使用我们提供的docker镜像。（在docker中你需要重新克隆仓库以获取最新更改）
+    ```bash
+    docker pull ghcr.io/northws/genie:v1
     ```
 4.  **设置数据（可选）：**
     如果是为了训练，你需要下载并预处理 SCOPe 数据集。

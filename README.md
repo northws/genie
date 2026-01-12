@@ -132,7 +132,7 @@ Genie 使用**去噪扩散概率模型 (DDPM)** 框架，按照 [Lin & AlQuraish
 
 **前向过程（扩散）：**
 
-给定由$C_\alpha$坐标 $\mathbf{x}_0$ 表示的蛋白质骨架，前向过程在 $T$ 个时间步内逐渐添加高斯噪声：
+给定由 $C_{\alpha}$ 坐标 $\mathbf{x}_0$ 表示的蛋白质骨架，前向过程在 $T$ 个时间步内逐渐添加高斯噪声：
 
 $$q(\mathbf{x}_t | \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_t; \sqrt{\bar{\alpha}_t}\mathbf{x}_0, (1-\bar{\alpha}_t)\mathbf{I})$$
 
@@ -491,7 +491,7 @@ for block_i in range(0, L, BLOCK_SIZE):
 
 3. **k-NN 搜索**：
    $$\mathcal{N}(i) = \text{TopK}\left(\|t_i - t_j\|_2, k\right)$$
-   其中 $t_i$ 为残基 $i$ 的 $C_\alpha$ 坐标。
+   其中 $t_i$ 为残基 $i$ 的 $C_{\alpha}$ 坐标。
 
 4. **注意力计算**（融合内核）：
    $$s^{\text{IPA}}_i = \sum_{j \in \mathcal{N}(i)} \alpha_{ij} \left[V_j \oplus V^{\text{pts}}_j \oplus Z^{(1)}_i (Z^{(2)}_j)^T\right]$$

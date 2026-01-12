@@ -249,22 +249,22 @@ $$z_{ij} \approx z^{(1)}_i \cdot (z^{(2)}_j)^T$$
 >
 > Flash Attention 2 的 CUDA 内核存在 **headdim ≤ 256** 的硬性限制。Flash-IPA 中的有效头维度（`headdim_eff`）计算公式为：
 >
-> $$\text{headdim\_eff} = \max\left(c_{\text{hidden}} + 5 \cdot n_{\text{qk\_point}} + r \cdot n_{\text{head}}, \quad c_{\text{hidden}} + 3 \cdot n_{\text{v\_point}} + r \cdot \frac{c_z}{4}\right)$$
+> $$d_{\mathrm{eff}} = \max\left(c_h + 5 n_q + r \cdot n_h, \quad c_h + 3 n_v + r \cdot \frac{c_z}{4}\right)$$
 >
 > **参数含义：**
-> - $c_{\text{hidden}}$：IPA 隐藏维度（`ipaHiddenDimension`），每个注意力头的隐藏通道数
-> - $n_{\text{qk\_point}}$：Query/Key 3D 点数（`ipaNumQkPoints`），用于计算 SE(3) 等变注意力权重
-> - $n_{\text{v\_point}}$：Value 3D 点数（`ipaNumVPoints`），用于聚合几何信息
-> - $n_{\text{head}}$：注意力头数（`ipaNumHeads`）
+> - $c_h$：IPA 隐藏维度（`ipaHiddenDimension`），每个注意力头的隐藏通道数
+> - $n_q$：Query/Key 3D 点数（`ipaNumQkPoints`），用于计算 SE(3) 等变注意力权重
+> - $n_v$：Value 3D 点数（`ipaNumVPoints`），用于聚合几何信息
+> - $n_h$：注意力头数（`ipaNumHeads`）
 > - $c_z$：配对特征维度（`pairFeatureDimension`），即 pair embedding 的通道数
 > - $r$：`zFactorRank`，边嵌入低秩分解的秩
 >
 > **公式解释：**
-> - 第一项 $c_{\text{hidden}} + 5 \cdot n_{\text{qk\_point}} + r \cdot n_{\text{head}}$：Query/Key 的有效维度（包含标量特征、5 个点坐标分量、偏置因子）
-> - 第二项 $c_{\text{hidden}} + 3 \cdot n_{\text{v\_point}} + r \cdot c_z/4$：Value 的有效维度（包含标量特征、3D 点坐标、下采样的边特征）
+> - 第一项 $c_h + 5 n_q + r \cdot n_h$：Query/Key 的有效维度（包含标量特征、5 个点坐标分量、偏置因子）
+> - 第二项 $c_h + 3 n_v + r \cdot c_z/4$：Value 的有效维度（包含标量特征、3D 点坐标、下采样的边特征）
 > - 取两者最大值作为 Flash Attention 需要的 headdim
 >
-> 使用默认 IPA 参数（$c_{\text{hidden}}=16$, $n_{\text{qk\_point}}=4$, $n_{\text{v\_point}}=8$, $n_{\text{head}}=12$, $c_z=128$）时：
+> 使用默认 IPA 参数（$c_h=16$, $n_q=4$, $n_v=8$, $n_h=12$, $c_z=128$）时：
 >
 > | zFactorRank | 公式1 (Q/K) | 公式2 (V) | headdim_eff | 状态 |
 > |-------------|-------------|-----------|-------------|------|

@@ -252,22 +252,22 @@ where $z^{(1)}, z^{(2)} \in \mathbb{R}^{L \times r \times C_z/r}$, and $r$ is th
 >
 > Flash Attention 2 has a hard limit of **headdim ≤ 256** in its CUDA kernels. The effective head dimension (`headdim_eff`) in Flash-IPA is calculated as:
 >
-> $$\text{headdim\_eff} = \max\left(c_{\text{hidden}} + 5 \cdot n_{\text{qk\_point}} + r \cdot n_{\text{head}}, \quad c_{\text{hidden}} + 3 \cdot n_{\text{v\_point}} + r \cdot \frac{c_z}{4}\right)$$
+> $$d_{\mathrm{eff}} = \max\left(c_h + 5 n_q + r \cdot n_h, \quad c_h + 3 n_v + r \cdot \frac{c_z}{4}\right)$$
 >
 > **Parameter Definitions:**
-> - $c_{\text{hidden}}$: IPA hidden dimension (`ipaHiddenDimension`), hidden channels per attention head
-> - $n_{\text{qk\_point}}$: Query/Key 3D points (`ipaNumQkPoints`), used for SE(3)-equivariant attention weights
-> - $n_{\text{v\_point}}$: Value 3D points (`ipaNumVPoints`), used for aggregating geometric information
-> - $n_{\text{head}}$: Number of attention heads (`ipaNumHeads`)
+> - $c_h$: IPA hidden dimension (`ipaHiddenDimension`), hidden channels per attention head
+> - $n_q$: Query/Key 3D points (`ipaNumQkPoints`), used for SE(3)-equivariant attention weights
+> - $n_v$: Value 3D points (`ipaNumVPoints`), used for aggregating geometric information
+> - $n_h$: Number of attention heads (`ipaNumHeads`)
 > - $c_z$: Pair feature dimension (`pairFeatureDimension`), channel dimension of pair embeddings
 > - $r$: `zFactorRank`, rank of the low-rank factorization for edge embeddings
 >
 > **Formula Explanation:**
-> - First term $c_{\text{hidden}} + 5 \cdot n_{\text{qk\_point}} + r \cdot n_{\text{head}}$: Effective Q/K dimension (scalar features + 5 point coordinate components + bias factors)
-> - Second term $c_{\text{hidden}} + 3 \cdot n_{\text{v\_point}} + r \cdot c_z/4$: Effective V dimension (scalar features + 3D point coordinates + downsampled edge features)
+> - First term $c_h + 5 n_q + r \cdot n_h$: Effective Q/K dimension (scalar features + 5 point coordinate components + bias factors)
+> - Second term $c_h + 3 n_v + r \cdot c_z/4$: Effective V dimension (scalar features + 3D point coordinates + downsampled edge features)
 > - The maximum of both terms determines the headdim required for Flash Attention
 >
-> With default IPA parameters ($c_{\text{hidden}}=16$, $n_{\text{qk\_point}}=4$, $n_{\text{v\_point}}=8$, $n_{\text{head}}=12$, $c_z=128$):
+> With default IPA parameters ($c_h=16$, $n_q=4$, $n_v=8$, $n_h=12$, $c_z=128$):
 >
 > | zFactorRank | Formula 1 (Q/K) | Formula 2 (V) | headdim_eff | Status |
 > |-------------|-----------------|---------------|-------------|--------|

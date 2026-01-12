@@ -86,6 +86,7 @@ class Config:
 			'accumulate_grad_batches':  int(config.get('accumulateGradBatches',  1)),      # Gradient accumulation steps
 			'warmup_epochs':            int(config.get('warmupEpochs',           0)),      # LR warmup epochs
 			'lr_scale_factor':        float(config.get('lrScaleFactor',          1.0)),    # LR scaling for large batch
+			'cosine_eta_min_factor':  float(config.get('cosineEtaMinFactor',     0.01)),   # Cosine annealing min LR factor (default 1%)
 		}
 
 		self.optimization = {

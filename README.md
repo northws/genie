@@ -242,7 +242,12 @@ During the first `warmupEpochs` epochs, the learning rate linearly increases fro
 
 **3. Cosine Annealing Schedule:**
 
-After warmup, the learning rate gradually decreases following a cosine curve to 1% of the base value.
+After warmup, the learning rate gradually decreases following a cosine curve. You can control the minimum learning rate via `cosineEtaMinFactor`:
+
+```
+cosineEtaMinFactor 0.01    # Default: decay to 1% of scaled LR
+cosineEtaMinFactor 0.1     # Conservative: decay to 10% of scaled LR
+```
 
 **4. Gradient Accumulation (Optional):**
 
@@ -259,6 +264,7 @@ accumulateGradBatches 8       # Accumulate 8 steps
 | `baseBatchSize` | Reference batch size for LR scaling | 8 |
 | `warmupEpochs` | Number of LR warmup epochs | 50-200 |
 | `lrScaleFactor` | Manual LR scale factor (overrides auto) | 1.0 (auto) |
+| `cosineEtaMinFactor` | Cosine annealing min LR factor | 0.01 (1%) or 0.1 (10%) |
 | `accumulateGradBatches` | Gradient accumulation steps | 1 (disabled) |
 
 **Example Configuration (Efficient Large Batch Training):**

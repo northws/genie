@@ -171,11 +171,15 @@ class Diffusion(LightningModule, ABC):
 			
 			# Optional: Cosine decay after warmup
 			total_epochs = self.config.training['n_epoch']
+			eta_min_factor = self.config.training.get('cosine_eta_min_factor', 0.01)
 			cosine_scheduler = CosineAnnealingLR(
 				optimizer,
 				T_max=total_epochs - warmup_epochs,
-				eta_min=base_lr * 0.01  # Decay to 1% of base LR
+				eta_min=scaled_lr * eta_min_factor
 			)
+			
+			print(f"[LR Schedule] Warmup: {scaled_lr * 0.1:.2e} -> {scaled_lr:.2e} ({warmup_epochs} epochs)")
+			print(f"[LR Schedule] Cosine decay: {scaled_lr:.2e} -> {scaled_lr * eta_min_factor:.2e} ({total_epochs - warmup_epochs} epochs)")
 			
 			scheduler = SequentialLR(
 				optimizer,

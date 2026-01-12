@@ -242,7 +242,12 @@ warmupEpochs 100       # 预热 epoch 数
 
 **3. 余弦退火调度：**
 
-预热完成后，学习率按余弦曲线逐渐下降到基准值的 1%。
+预热完成后，学习率按余弦曲线逐渐下降。可以通过 `cosineEtaMinFactor` 控制最小学习率：
+
+```
+cosineEtaMinFactor 0.01    # 默认：降到缩放后 LR 的 1%
+cosineEtaMinFactor 0.1     # 保守：降到缩放后 LR 的 10%
+```
 
 **4. 梯度累积（可选）：**
 
@@ -259,6 +264,7 @@ accumulateGradBatches 8       # 累积 8 步
 | `baseBatchSize` | LR 缩放的参考批次大小 | 8 |
 | `warmupEpochs` | LR 预热 epoch 数 | 50-200 |
 | `lrScaleFactor` | 手动 LR 缩放因子（覆盖自动计算） | 1.0（自动） |
+| `cosineEtaMinFactor` | 余弦退火最小 LR 倍率 | 0.01（1%）或 0.1（10%） |
 | `accumulateGradBatches` | 梯度累积步数 | 1（不累积） |
 
 **配置示例（大批次高效训练）：**

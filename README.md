@@ -165,10 +165,32 @@ useFlashAttn3 False  # Force FA2 even on Hopper GPUs
 Note: On non-Hopper GPUs, Flash Attention 2 is automatically used regardless of this setting.
 | Model Parameters | ~6.4M | ~3.1M |
 
+**IPA Micro-Batching for Large Batch Training:**
+
+When training with large batch sizes (e.g., 512), the IPA layer may experience numerical instability due to how Flash Attention's `unpad/pad` operations process many sequences together. To address this, we introduce **IPA Micro-Batching**:
+
+```
+ipaMicroBatchSize 16
+```
+
+This splits the large batch into smaller chunks (e.g., 16 samples each) for IPA processing while keeping the outer batch size large for GPU efficiency.
+
+| Batch Size | ipaMicroBatchSize | Effect |
+| :--- | :--- | :--- |
+| ≤16 | 0 (disabled) | Not needed for small batches |
+| 64-128 | 8-16 | Balanced stability and speed |
+| 256-512 | 16 | Recommended for large batch training |
+
+**Why this helps:**
+- IPA is designed for self-attention within individual protein structures
+- Large batch sizes don't benefit IPA the same way they benefit other layers
+- Micro-batching maintains numerical behavior similar to small batch training
+
 **Configuration Parameters for Flash Mode:**
 - `useFlashMode`: Enable memory-efficient Flash mode (default: `False`)
 - `zFactorRank`: Rank for edge embedding factorization (default: `2`)
 - `kNeighbors`: Number of nearest neighbors for distogram (default: `10`)
+- `ipaMicroBatchSize`: Micro-batch size for IPA stability (default: `0`, disabled)
 
 ---
 

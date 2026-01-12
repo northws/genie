@@ -127,6 +127,10 @@ class IPAConfig:
     seq_tfmr_num_heads: int = 4
     seq_tfmr_num_layers: int = 2
     num_blocks: int = 6
+    # Micro-batch settings for large batch training stability
+    # When batch size > ipa_micro_batch_size, IPA will process in smaller chunks
+    # This helps maintain numerical stability similar to small batch training
+    ipa_micro_batch_size: int = 0  # 0 means disabled, recommended: 8-16 for large batch training
 
 
 class InvariantPointAttention(nn.Module):
@@ -219,6 +223,69 @@ class InvariantPointAttention(nn.Module):
             print(f"Warning: headdim_eff={self.headdim_eff} > 256, Flash Attention will be disabled and slow IPA will be used instead.")
             print(f"  Note: slow_ipa_fwd requires O(L²) memory and may cause OOM for long sequences!")
             print(f"  To use Flash Attention (memory efficient), reduce z_factor_rank to 2 or lower (current: {self._ipa_conf.z_factor_rank}).")
+
+        # Micro-batch configuration for large batch training stability
+        self.ipa_micro_batch_size = ipa_conf.ipa_micro_batch_size
+        if self.ipa_micro_batch_size > 0:
+            print(f"[Flash IPA] Micro-batch enabled: processing {self.ipa_micro_batch_size} samples per IPA call")
+            print(f"[Flash IPA] This improves training stability for large batch sizes")
+
+    def _micro_batch_forward(
+        self,
+        s: torch.Tensor,
+        z: Optional[torch.Tensor],
+        z_factor_1: Optional[torch.Tensor],
+        z_factor_2: Optional[torch.Tensor],
+        r: Rigid,
+        mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Process IPA in micro-batches for numerical stability with large batch sizes.
+        
+        When training with large batch sizes (e.g., 512), the gradients from flash attention
+        can become less stable due to the unpad/pad operations across many sequences.
+        This method splits the batch into smaller chunks, processes each separately,
+        and concatenates the results.
+        
+        Args:
+            Same as forward()
+        
+        Returns:
+            [*, N_res, C_s] single representation update
+        """
+        batch_size = s.shape[0]
+        micro_batch = self.ipa_micro_batch_size
+        
+        # If batch is smaller than micro-batch, just do normal forward
+        if batch_size <= micro_batch:
+            return self._single_forward(s, z, z_factor_1, z_factor_2, r, mask)
+        
+        # Process in micro-batches
+        outputs = []
+        for start_idx in range(0, batch_size, micro_batch):
+            end_idx = min(start_idx + micro_batch, batch_size)
+            
+            # Slice inputs for this micro-batch
+            s_mb = s[start_idx:end_idx]
+            mask_mb = mask[start_idx:end_idx]
+            
+            # Slice z or z_factors
+            z_mb = z[start_idx:end_idx] if z is not None else None
+            z_factor_1_mb = z_factor_1[start_idx:end_idx] if z_factor_1 is not None else None
+            z_factor_2_mb = z_factor_2[start_idx:end_idx] if z_factor_2 is not None else None
+            
+            # Slice rigid - need to handle the Rigid object
+            r_mb = Rigid(
+                r._rots[start_idx:end_idx],
+                r._trans[start_idx:end_idx]
+            )
+            
+            # Forward pass for this micro-batch
+            out_mb = self._single_forward(s_mb, z_mb, z_factor_1_mb, z_factor_2_mb, r_mb, mask_mb)
+            outputs.append(out_mb)
+        
+        # Concatenate outputs
+        return torch.cat(outputs, dim=0)
 
     def flash_ipa_fwd(self, q, k, v, q_pts, k_pts, v_pts, z_factor_1, z_factor_2, r, mask):
         """
@@ -658,6 +725,38 @@ class InvariantPointAttention(nn.Module):
         _z_reference_list: Optional[Sequence[torch.Tensor]] = None,
     ) -> torch.Tensor:
         """
+        Args:
+            s:
+                [*, N_res, C_s] single representation
+            z:
+                [*, N_res, N_res, C_z] pair representation
+            r:
+                [*, N_res] transformation object
+            mask:
+                [*, N_res] mask
+        Returns:
+            [*, N_res, C_s] single representation update
+        """
+        # Check if micro-batch processing is needed
+        if self.ipa_micro_batch_size > 0 and s.shape[0] > self.ipa_micro_batch_size:
+            return self._micro_batch_forward(s, z, z_factor_1, z_factor_2, r, mask)
+        
+        return self._single_forward(s, z, z_factor_1, z_factor_2, r, mask, _offload_inference, _z_reference_list)
+
+    def _single_forward(
+        self,
+        s: torch.Tensor,
+        z: Optional[torch.Tensor],
+        z_factor_1: Optional[torch.Tensor],
+        z_factor_2: Optional[torch.Tensor],
+        r: Rigid,
+        mask: torch.Tensor,
+        _offload_inference: bool = False,
+        _z_reference_list: Optional[Sequence[torch.Tensor]] = None,
+    ) -> torch.Tensor:
+        """
+        Single forward pass without micro-batching.
+        
         Args:
             s:
                 [*, N_res, C_s] single representation

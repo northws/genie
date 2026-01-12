@@ -54,7 +54,8 @@ class FlashStructureLayer(nn.Module):
                  z_factor_rank=2,
                  k_neighbors=10,
                  use_grad_checkpoint=False,
-                 use_flash_attn_3=True
+                 use_flash_attn_3=True,
+                 ipa_micro_batch_size=0  # Micro-batch size for IPA stability with large batches
                  ):
         super(FlashStructureLayer, self).__init__()
         
@@ -87,6 +88,7 @@ class FlashStructureLayer(nn.Module):
             z_factor_rank=z_factor_rank,
             no_qk_points=n_qk_point,
             no_v_points=n_v_point,
+            ipa_micro_batch_size=ipa_micro_batch_size,  # Pass micro-batch config
         )
         self.ipa = FlashIPA(ipa_conf)
         
@@ -183,7 +185,8 @@ class FlashStructureNet(nn.Module):
                  z_factor_rank=2,
                  k_neighbors=10,
                  use_grad_checkpoint=False,
-                 use_flash_attn_3=True
+                 use_flash_attn_3=True,
+                 ipa_micro_batch_size=0  # Micro-batch size for IPA stability with large batches
                  ):
         super(FlashStructureNet, self).__init__()
         
@@ -198,6 +201,8 @@ class FlashStructureNet(nn.Module):
         print(f"FlashStructureNet: Using flash_1d_bias mode (O(L) memory for edge features)")
         if use_flash_attn_3:
             print(f"FlashStructureNet: FA3 mode enabled (will use on Hopper GPUs if available)")
+        if ipa_micro_batch_size > 0:
+            print(f"FlashStructureNet: IPA micro-batch enabled with size {ipa_micro_batch_size}")
         
         layers = [
             FlashStructureLayer(
@@ -208,7 +213,8 @@ class FlashStructureNet(nn.Module):
                 z_factor_rank=z_factor_rank,
                 k_neighbors=k_neighbors,
                 use_grad_checkpoint=use_grad_checkpoint,
-                use_flash_attn_3=use_flash_attn_3
+                use_flash_attn_3=use_flash_attn_3,
+                ipa_micro_batch_size=ipa_micro_batch_size
             )
             for _ in range(n_structure_layer)
         ]

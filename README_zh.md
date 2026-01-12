@@ -162,10 +162,32 @@ useFlashAttn3 False  # 即使在 Hopper GPU 上也强制使用 FA2
 
 注意：在非 Hopper GPU 上，无论此设置如何，都会自动使用 Flash Attention 2。
 
+**IPA 微批次处理（大批次训练稳定性优化）：**
+
+当使用大批次（如 512）进行训练时，IPA 层可能会因为 Flash Attention 的 `unpad/pad` 操作同时处理大量序列而出现数值不稳定。为解决此问题，我们引入了 **IPA 微批次处理**：
+
+```
+ipaMicroBatchSize 16
+```
+
+这会将大批次拆分成较小的块（如每块 16 个样本）分别通过 IPA 处理，同时保持外层大批次以充分利用 GPU 并行性。
+
+| 批次大小 | ipaMicroBatchSize | 效果 |
+| :--- | :--- | :--- |
+| ≤16 | 0（禁用） | 小批次无需启用 |
+| 64-128 | 8-16 | 平衡稳定性和速度 |
+| 256-512 | 16 | 大批次训练推荐设置 |
+
+**为什么这样做有效：**
+- IPA 设计用于单个蛋白质结构内的自注意力
+- 大批次对 IPA 的优化效果不如其他层明显
+- 微批次处理保持与小批次训练相似的数值行为
+
 **Flash 模式配置参数：**
 - `useFlashMode`：启用内存高效 Flash 模式（默认：`False`）
 - `zFactorRank`：边嵌入分解的秩（默认：`2`）
 - `kNeighbors`：距离图的最近邻数量（默认：`10`）
+- `ipaMicroBatchSize`：IPA 微批次大小，用于大批次训练稳定性（默认：`0`，禁用）
 - `useFlashAttn3`：在 Hopper GPU 上启用 FA3（默认：`True`）
 
 ---

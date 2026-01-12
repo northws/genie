@@ -29,7 +29,7 @@ All modifications, optimizations, and new features added in this repository are 
 
 MIT License
 
-Copyright (c) 2026 Genie Optimization Contributors
+Copyright (c) 2026 Northws
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

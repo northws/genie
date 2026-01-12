@@ -20,7 +20,7 @@ This project is a reproduction and optimization of [https://github.com/aqlaborat
     ```bash
     pip install -e .
     ```
-    If you encounter any issues while setting up the environment, you can also directly use the Docker image we provide.
+    If you encounter any issues while setting up the environment, you can also directly use the Docker image we provide.（To get the latest updates in Docker, you must clone the repository again.）
     ```bash
     docker pull ghcr.io/northws/genie:v1
     ```

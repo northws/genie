@@ -140,9 +140,9 @@ $$q(\mathbf{x}_t | \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_t; \sqrt{\bar{\alpha}_
 
 **训练损失：**
 
-模型 $\epsilon_\theta$ 被训练来预测每个时间步添加的噪声 $\epsilon$。损失函数为预测噪声与实际噪声之间的**均方根偏差 (RMSD)**：
+模型 $\epsilon_{\theta}$ 被训练来预测每个时间步添加的噪声 $\epsilon$ 。损失函数为预测噪声与实际噪声之间的**均方根偏差 (RMSD)**：
 
-$$\mathcal{L} = \mathbb{E}_{t, \mathbf{x}_0, \epsilon} \left[ \frac{1}{N}\sum_{i=1}^{N} \|\epsilon_\theta(\mathbf{x}_t, t)_i - \epsilon_i\|_2 \right]$$
+$$\mathcal{L} = \mathbb{E}_{t, \mathbf{x}_0, \epsilon} \left[ \frac{1}{N}\sum_{i=1}^{N} \|\epsilon_{\theta}(\mathbf{x}_t, t)_i - \epsilon_i\|_2 \right]$$
 
 其中 $N$ 为残基数量，期望值是对均匀采样的时间步 $t \sim \mathcal{U}(1, T)$、数据样本 $\mathbf{x}_0$ 和噪声 $\epsilon \sim \mathcal{N}(0, \mathbf{I})$ 计算的。
 
@@ -150,7 +150,7 @@ $$\mathcal{L} = \mathbb{E}_{t, \mathbf{x}_0, \epsilon} \left[ \frac{1}{N}\sum_{i
 
 在生成过程中，模型从纯噪声 $\mathbf{x}_T \sim \mathcal{N}(0, \mathbf{I})$ 开始迭代去噪：
 
-$$p_\theta(\mathbf{x}_{t-1}|\mathbf{x}_t) = \mathcal{N}\left(\mathbf{x}_{t-1}; \frac{1}{\sqrt{\alpha_t}}\left(\mathbf{x}_t - \frac{1-\alpha_t}{\sqrt{1-\bar{\alpha}_t}}\epsilon_\theta(\mathbf{x}_t, t)\right), \sigma_t^2\mathbf{I}\right)$$
+$$p_{\theta}(\mathbf{x}_{t-1}|\mathbf{x}_t) = \mathcal{N}\left(\mathbf{x}_{t-1}; \frac{1}{\sqrt{\alpha_t}}\left(\mathbf{x}_t - \frac{1-\alpha_t}{\sqrt{1-\bar{\alpha}_t}}\epsilon_{\theta}(\mathbf{x}_t, t)\right), \sigma_t^2\mathbf{I}\right)$$
 
 ---
 
@@ -445,10 +445,12 @@ ipaNumHeads 16
 
 **1. 边嵌入低秩分解**
 
-标准 IPA 使用完整的配对嵌入 $Z \in \mathbb{R}^{L \times L \times C_z}$：
+标准 IPA 使用完整的配对嵌入 $Z \in \mathbb{R}^{L \times L \times C_z}$ ：
+
 $$\text{Attn}_{ij} = \text{softmax}\left(\frac{Q_i K_j^T + Z_{ij}}{\sqrt{d}}\right)$$
 
 Flash-IPA 将 $Z$ 分解为两个 1D 因子：
+
 $$Z_{ij} \approx Z^{(1)}_i \cdot (Z^{(2)}_j)^T$$
 
 其中 $Z^{(1)}, Z^{(2)} \in \mathbb{R}^{L \times r \times d}$，$r$ 为分解秩（我们在代码中表示为`zFactorRank`）。
@@ -457,7 +459,8 @@ $$Z_{ij} \approx Z^{(1)}_i \cdot (Z^{(2)}_j)^T$$
 
 **2. 稀疏 k-NN 注意力**
 
-对每个残基 $i$，仅计算其与空间最近的 $k$ 个相邻氨基酸的注意力：
+对每个残基 $i$ ，仅计算其与空间最近的 $k$ 个相邻氨基酸的注意力：
+
 $$\text{Attn}_i = \text{softmax}\left(\frac{Q_i K_{\mathcal{N}(i)}^T + Z_{i,\mathcal{N}(i)}}{\sqrt{d}}\right) V_{\mathcal{N}(i)}$$
 
 其中 $\mathcal{N}(i) = \text{TopK}(\|r_i - r_j\|_2, k)$ 为基于 3D 坐标的最近邻集合。
@@ -483,23 +486,31 @@ for block_i in range(0, L, BLOCK_SIZE):
 **完整前向传播：**
 
 1. **Query/Key/Value 投影**：
+
    $$Q = \text{Linear}_Q(s), \quad K = \text{Linear}_K(s), \quad V = \text{Linear}_V(s)$$
    
 2. **3D 点生成**（SE(3) 等变）：
+
    $$Q_{\text{pts}} = R \cdot \text{Linear}_{Q\text{-pts}}(s), \quad K_{\text{pts}} = R \cdot \text{Linear}_{K\text{-pts}}(s)$$
+   
    其中 $R$ 为局部坐标系旋转。
 
 3. **k-NN 搜索**：
+
    $$\mathcal{N}(i) = \text{TopK}\left(\|t_i - t_j\|_2, k\right)$$
+   
    其中 $t_i$ 为残基 $i$ 的 $C_{\alpha}$ 坐标。
 
 4. **注意力计算**（融合内核）：
+
    $$s^{\text{IPA}}_i = \sum_{j \in \mathcal{N}(i)} \alpha_{ij} \left[V_j \oplus V^{\text{pts}}_j \oplus Z^{(1)}_i (Z^{(2)}_j)^T\right]$$
    
    其中注意力权重：
+   
    $$\alpha_{ij} = \frac{\exp\left(\frac{Q_i K_j^T + \|Q^{\text{pts}}_i - K^{\text{pts}}_j\|^2 + Z^{(1)}_i (Z^{(2)}_j)^T}{\sqrt{d}}\right)}{\sum_{j' \in \mathcal{N}(i)} \exp(\cdots)}$$
 
 5. **输出投影**：
+
    $$s_{\text{out}} = \text{Linear}_{\text{out}}(s^{\text{IPA}})$$
 
 本实现包含两种 Flash-IPA 模式：
@@ -671,7 +682,7 @@ gradientClipVal 1.0
 
 $$z_{ij} \approx z^{(1)}_i \cdot (z^{(2)}_j)^T$$
 
-其中 $z^{(1)}, z^{(2)} \in \mathbb{R}^{L \times r \times C_z/r}$，$r$ 即为 `zFactorRank`。
+其中 $z^{(1)}, z^{(2)} \in \mathbb{R}^{L \times r \times C_z/r}$ ，$r$ 即为 `zFactorRank` 。
 
 **作用：**
 
@@ -720,9 +731,9 @@ $$z_{ij} \approx z^{(1)}_i \cdot (z^{(2)}_j)^T$$
 > > | 4           | 16+20+48=84  | 16+24+128=168 | **168**     | 正常       |
 > > | 8           | 16+20+96=132 | 16+24+256=296 | **296**     | ❌ 超出限制 |
 > >
-> > **结论：** 使用默认 IPA 参数时，`zFactorRank` 可以设置为 **1-7**（headdim_eff ≤ 256）。当 `zFactorRank ≥ 8` 时会超出限制，回退到标准 IPA（需要 $O(L^2)$ 显存）。
+> > **结论：** 使用默认 IPA 参数时，`zFactorRank` 可以设置为 **1-7**（`headdim_eff` ≤ 256）。当 `zFactorRank` ≥ 8 时会超出限制，回退到标准 IPA（需要 $O(L^2)$ 显存）。
 > >
-> > **注意：** 如果修改了其他 IPA 参数（如增大 `ipaHiddenDimension` 或 `ipaNumVPoints`），需要重新计算 headdim_eff 以确保不超过 256。
+> > **注意：** 如果修改了其他 IPA 参数（如增大 `ipaHiddenDimension` 或 `ipaNumVPoints`），需要重新计算 `headdim_eff` 以确保不超过 256。
 
 ##### `kNeighbors` - 最近邻数量
 
@@ -750,6 +761,7 @@ $$z_{ij} \approx z^{(1)}_i \cdot (z^{(2)}_j)^T$$
 **zFactorRank 的信息论角度：**
 
 边嵌入 $Z \in \mathbb{R}^{L \times L \times C_z}$ 编码了残基对之间的关系。低秩分解：
+
 $$Z_{ij} = \sum_{r=1}^{R} Z^{(1)}_{ir} (Z^{(2)}_{jr})^T$$
 
 表示前 $R$ 个主成分可以捕获 $Z$ 的大部分信息。根据经验：
@@ -766,14 +778,16 @@ $$Z_{ij} = \sum_{r=1}^{R} Z^{(1)}_{ir} (Z^{(2)}_{jr})^T$$
 - 二级结构（$\alpha$-螺旋、$\beta$-折叠）涉及 **4-6 个局部邻居**
 - 长程相互作用（如疏水核心）涉及额外 **4-8 个远程邻居**
 
-因此，$k \in [10, 16]$ 可以覆盖大部分重要相互作用。
+因此， $k \in [10, 16]$ 可以覆盖大部分重要相互作用。
 
 **参数之间的权衡：**
 
 显存占用（结构层）：
+
 $$\text{Memory} \propto L \cdot (r \cdot C_z + k \cdot d_{\text{head}})$$
 
 计算量（每层）：
+
 $$\text{FLOPs} \propto L \cdot k \cdot d_{\text{head}}^2$$
 
 精度损失（相对标准 IPA）：
@@ -826,9 +840,11 @@ maximumNumResidues 128
 **mHC 工作原理：**
 
 标准残差连接：
+
 $$x_{l+1} = x_l + F(x_l)$$
 
 mHC 使用带流形约束的扩展超连接：
+
 $$x_{l+1} = H_{\text{res}} \otimes x_l + H_{\text{post}}^T \otimes F(H_{\text{pre}} \otimes x_l)$$
 
 其中：
@@ -867,7 +883,7 @@ $$x_{l+1} = H_{\text{res}} \otimes x_l + H_{\text{post}}^T \otimes F(H_{\text{pr
    **H_res**（通过 Sinkhorn-Knopp 保证双随机性）：
    $$H_{\text{res}} = \text{SinkhornKnopp}(H_{\text{res,raw}}, \text{iters}=20)$$
    
-   其中生成$H_{\text{res}} $的Sinkhorn-Knopp 算法我们用如下函数实现：
+   其中生成 $H_{\text{res}}$ 的Sinkhorn-Knopp 算法我们用如下函数实现：
    ```python
    def sinkhorn_knopp(M, n_iters=20):
        M_pos = exp(M)                        # 确保正值
@@ -879,10 +895,11 @@ $$x_{l+1} = H_{\text{res}} \otimes x_l + H_{\text{post}}^T \otimes F(H_{\text{pr
    
    双随机矩阵性质：
    - 所有元素 $\geq 0$
-   - 所有行和为 1：$\sum_j H_{\text{res}}[i,j] = 1$
-   - 所有列和为 1：$\sum_i H_{\text{res}}[i,j] = 1$
+   - 所有行和为 1： $\sum_j H_{\text{res}}[i,j] = 1$
+   - 所有列和为 1： $\sum_i H_{\text{res}}[i,j] = 1$
 
 4. **前向传播**
+
    $$\text{layer\_input} = H_{\text{pre}} \otimes x' \quad \text{形状: } [B,L,1,n] \otimes [B,L,n,C] \rightarrow [B,L,C]$$
    
    $$\text{layer\_output} = F(\text{layer\_input}) \quad \text{形状: } [B, L, C]$$
@@ -892,11 +909,12 @@ $$x_{l+1} = H_{\text{res}} \otimes x_l + H_{\text{post}}^T \otimes F(H_{\text{pr
    $$x'_{l+1} = H_{\text{res}} \otimes x' + \text{output\_expanded}$$
 
 5. **输出收缩**（仅最后一层）
+
    $$x_{\text{out}} = \text{mean}(x'_L, \text{dim}=n) \quad \text{形状: } [B, L, n, C] \rightarrow [B, L, C]$$
 
 **为什么在我们的体系有效🧐：**
 
-- **恒等保持**：初始化时（$\alpha \approx 0$, $b_{\text{res}} \approx I$），$H_{\text{res}} \approx I$（单位矩阵），确保稳定的梯度流
+- **恒等保持**：初始化时（ $\alpha \approx 0$ ， $b_{\text{res}} \approx I$ ）， $H_{\text{res}} \approx I$ （单位矩阵），确保稳定的梯度流
 - **Birkhoff Polytope**：双随机矩阵保持向量范数，防止梯度爆炸/消失
 - **扩展流**：多个并行路径允许更丰富的信息流动，同时保持稳定性
 
@@ -992,7 +1010,7 @@ $$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{RMSD}} + \lambda \cdot \mathca
 
 **1. 范数保持损失（mHC 核心思想）**
 
-双随机矩阵的关键性质是 **谱半径 = 1**，即 $\|Hx\| \approx \|x\|$。我们在预测上强制这一性质：
+双随机矩阵的关键性质是 **谱半径 = 1**，即 $\|Hx\| \approx \|x\|$ 。我们在预测上强制这一性质：
 
 $$\mathcal{L}_{\text{norm}} = \frac{1}{L} \sum_{i=1}^{L} \left( \frac{\|\hat{\epsilon}_i\|_2}{\|\epsilon_i\|_2} - 1 \right)^2$$
 
@@ -1011,7 +1029,7 @@ $$\mathcal{L}_{\text{mHC}} = 0.5 \cdot \mathcal{L}_{\text{norm}} + 0.5 \cdot \ma
 **与 mHC 理论的联系：**
 
 mHC 论文（arXiv:2512.24880）证明，将残差连接投影到 Birkhoff 多胞体（双随机矩阵）上可以提供：
-1. **范数保持**：双随机矩阵的谱半径为 1，所以 $\|H_{\text{res}} x\| \approx \|x\|$
+1. **范数保持**：双随机矩阵的谱半径为 1，所以 $\|H_{\text{res}} x\| \approx \|x\|$ 
 2. **恒等保持**：初始化时 $H_{\text{res}} \approx I$ 确保稳定的训练开始
 3. **平衡梯度流**：防止梯度爆炸和消失
 

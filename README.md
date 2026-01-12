@@ -103,6 +103,325 @@ This mode provides significant memory savings by:
 - `zFactorRank`: Rank for edge embedding factorization (default: `2`)
 - `kNeighbors`: Number of nearest neighbors for distogram (default: `10`)
 
+---
+
+### Flash-IPA Hyperparameter Guide
+
+Based on the [Flash IPA paper](https://arxiv.org/abs/2505.11580) (Liu et al., 2025), here's a detailed explanation of the two key hyperparameters:
+
+#### `zFactorRank` - Edge Embedding Factorization Rank
+
+**Principle:** In standard IPA, edge embeddings (pair embeddings) $z_{ij}$ form a $L \times L \times C_z$ tensor, requiring $O(L^2)$ memory. Flash IPA employs **low-rank factorization** to decompose it into two 1D factors:
+
+$$z_{ij} \approx z^{(1)}_i \cdot (z^{(2)}_j)^T$$
+
+where $z^{(1)}, z^{(2)} \in \mathbb{R}^{L \times r \times C_z/r}$, and $r$ is the `zFactorRank`.
+
+**Effect:**
+- Reduces memory complexity from $O(L^2 \cdot C_z)$ to $O(L \cdot r \cdot C_z)$
+- Controls the expressiveness of edge embedding approximation
+- Higher rank preserves more pairwise information
+
+**Recommended Values:**
+| Scenario | Value | Notes |
+|----------|-------|-------|
+| Short sequences (≤128) | 4-8 | Prioritize accuracy when memory allows |
+| Medium sequences (128-512) | 2-4 | Balance memory and accuracy |
+| Long sequences (>512) | 1-2 | Prioritize memory savings |
+| Memory constrained | 1 | Minimum memory footprint |
+
+#### `kNeighbors` - Number of Nearest Neighbors
+
+**Principle:** Flash IPA uses a **sparse attention** strategy. For each residue $i$, the model only computes attention weights with its $k$ spatially nearest neighbors, instead of full all-to-all attention.
+
+**Effect:**
+- Reduces attention complexity from $O(L^2)$ to $O(L \cdot k)$
+- Leverages protein structure locality: spatially close residues typically have stronger interactions
+- The $k$ value determines the local receptive field size
+
+**Recommended Values:**
+| Scenario | Value | Notes |
+|----------|-------|-------|
+| High accuracy needs | 16-32 | Capture more long-range interactions |
+| Standard training | 10-16 | Default configuration from paper |
+| Long sequences (>512) | 8-12 | Reduce computational cost |
+| Very long sequences (>1024) | 6-10 | Minimize computational overhead |
+
+**Physical Intuition:** In proteins, each residue typically has 8-12 significant spatial neighbors (contact distance <8Å). Setting `kNeighbors` in this range covers the main local structural information.
+
+#### Recommended Parameter Combinations
+
+| Configuration | `zFactorRank` | `kNeighbors` | `maximumNumResidues` | GPU Memory |
+|---------------|---------------|--------------|----------------------|------------|
+| **High-accuracy short** | 4 | 16 | 128 | ≥16GB |
+| **Standard medium** | 2 | 10 | 256 | ≥24GB |
+| **Memory-efficient long** | 2 | 8 | 512 | ≥32GB |
+| **Very long sequences** | 1 | 6 | 1024 | ≥48GB |
+
+**Example Configuration (256 residues, 32GB GPU):**
+```
+useFlashMode True
+zFactorRank 2
+kNeighbors 10
+maximumNumResidues 256
+```
+
+**Example Configuration (128 residues, prioritize accuracy):**
+```
+useFlashMode True
+zFactorRank 4
+kNeighbors 16
+maximumNumResidues 128
+```
+
+---
+
+### Model Architecture Hyperparameter Guide
+
+Based on the [Genie paper](https://arxiv.org/abs/2301.12485) (Lin & AlQuraishi, 2023) and the AlphaFold2 structure module design principles, here is a detailed guide for selecting hyperparameters for the four main network components.
+
+#### Overview of Network Architecture
+
+Genie's denoising network consists of four main components:
+1. **Single Feature Network**: Generates per-residue representations from positional and timestep embeddings
+2. **Pair Feature Network**: Creates pairwise residue representations from single features and relative positions
+3. **Pair Transform Network**: Refines pair representations using triangular operations (from AlphaFold2's Evoformer)
+4. **Structure Network**: Updates 3D coordinates using Invariant Point Attention (IPA)
+
+```
+Input (noisy frames) → Single Feature Net → Pair Feature Net → Pair Transform Net → Structure Net → Output (denoised frames)
+```
+
+---
+
+#### 1. General Parameters
+
+| Parameter | Config Key | Default | Description |
+|-----------|------------|---------|-------------|
+| Single Feature Dimension | `singleFeatureDimension` | 128 | Channel dimension for per-residue representations ($c_s$) |
+| Pair Feature Dimension | `pairFeatureDimension` | 128 | Channel dimension for pairwise representations ($c_p$) |
+
+**Selection Guide:**
+- These dimensions should be equal ($c_s = c_p$) for optimal information flow
+- **Standard training**: 128 (paper default, balances expressiveness and efficiency)
+- **High-capacity models**: 256 (more expressive but ~4x memory for pair features)
+- **Memory-constrained**: 64 (reduced capacity but significant memory savings)
+
+---
+
+#### 2. Single Feature Network
+
+The Single Feature Network combines positional encodings and diffusion timestep embeddings to create initial per-residue representations.
+
+| Parameter | Config Key | Default | Description |
+|-----------|------------|---------|-------------|
+| Positional Embedding Dim | `positionalEmbeddingDimension` | 128 | Dimension of sinusoidal position encodings |
+| Timestep Embedding Dim | `timestepEmbeddingDimension` | 128 | Dimension of diffusion timestep encodings |
+
+**Selection Guide:**
+- Both dimensions should match `singleFeatureDimension` for seamless integration
+- The sinusoidal encoding follows the Transformer convention: $PE(pos, 2i) = \sin(pos/10000^{2i/d})$
+- **Recommendation**: Keep equal to `singleFeatureDimension` (128)
+
+---
+
+#### 3. Pair Feature Network
+
+The Pair Feature Network creates pairwise representations by combining:
+- Outer product of single features
+- Relative position encodings
+- Template features (distogram from current structure estimate)
+
+| Parameter | Config Key | Default | Description |
+|-----------|------------|---------|-------------|
+| Relative Position K | `relativePositionK` | 32 | Clipping range for relative positions: $[-k, k]$ |
+| Template Type | `templateType` | `v1` | Template feature extraction method |
+
+**Selection Guide:**
+
+**`relativePositionK`:**
+- Creates $(2k+1)$ position bins for relative position encoding
+- Default 32 → 65 bins covering positions from -32 to +32
+- **Short sequences (≤128)**: 32 is sufficient
+- **Long sequences (>256)**: Consider 64 to capture longer-range position information
+- Physical intuition: Most important structural contacts occur within ~30 residues
+
+**`templateType`:**
+- `v1`: Standard distogram features (recommended)
+- Controls how current structure estimate is encoded as pair features
+
+---
+
+#### 4. Pair Transform Network
+
+The Pair Transform Network refines pair representations using operations adapted from AlphaFold2's Evoformer. This is the most computationally expensive component with $O(L^2)$ memory complexity.
+
+| Parameter | Config Key | Default | Description |
+|-----------|------------|---------|-------------|
+| Num Transform Layers | `numPairTransformLayers` | 5 | Number of pair transform blocks |
+| Include Triangular Multiplicative | `includeTriangularMultiplicativeUpdate` | True | Enable triangle multiplication |
+| Include Triangular Attention | `includeTriangularAttention` | False | Enable triangle attention |
+| Triangular Multiplicative Hidden Dim | `triangularMultiplicativeHiddenDimension` | 128 | Hidden dimension for triangle multiplication |
+| Triangular Attention Hidden Dim | `triangularAttentionHiddenDimension` | 32 | Per-head hidden dimension for triangle attention |
+| Triangular Attention Heads | `triangularAttentionNumHeads` | 4 | Number of attention heads |
+| Triangular Dropout | `triangularDropout` | 0.25 | Dropout rate for triangular operations |
+| Pair Transition N | `pairTransitionN` | 4 | Expansion factor for pair transition FFN |
+
+**Selection Guide:**
+
+**`numPairTransformLayers`:**
+| Scenario | Recommended | Notes |
+|----------|-------------|-------|
+| Standard training | 5 | Paper default, good balance |
+| Fast prototyping | 2-3 | Reduced accuracy but faster iteration |
+| High accuracy | 8-10 | Diminishing returns beyond 8 |
+| Flash mode | 0 | Skipped entirely to save memory |
+
+**`includeTriangularMultiplicativeUpdate` vs `includeTriangularAttention`:**
+- Triangle **Multiplication** (default ON): $O(L^2 \cdot c)$ complexity, more efficient
+- Triangle **Attention** (default OFF): $O(L^2 \cdot L)$ complexity, more expressive but costly
+- **Recommendation**: Use multiplication only (paper default) for most cases
+- Enable attention only for high-accuracy requirements with sufficient GPU memory
+
+**`triangularDropout`:**
+- Higher dropout (0.25-0.3) helps prevent overfitting on small datasets
+- Lower dropout (0.1-0.15) for larger datasets or when underfitting
+
+---
+
+#### 5. Structure Network (IPA)
+
+The Structure Network uses Invariant Point Attention (IPA) from AlphaFold2 to update 3D coordinates while maintaining SE(3) equivariance.
+
+| Parameter | Config Key | Default | Description |
+|-----------|------------|---------|-------------|
+| Num Structure Layers | `numStructureLayers` | 5 | Number of IPA layers |
+| Num Structure Blocks | `numStructureBlocks` | 1 | Number of structure module iterations |
+| IPA Hidden Dimension | `ipaHiddenDimension` | 16 | Per-head hidden dimension |
+| IPA Num Heads | `ipaNumHeads` | 12 | Number of attention heads |
+| IPA Num Q/K Points | `ipaNumQkPoints` | 4 | Number of query/key 3D points per head |
+| IPA Num V Points | `ipaNumVPoints` | 8 | Number of value 3D points per head |
+| IPA Dropout | `ipaDropout` | 0.1 | Dropout rate after IPA |
+| Num Transition Layers | `numStructureTransitionLayers` | 1 | Transition layers per structure layer |
+| Transition Dropout | `structureTransitionDropout` | 0.1 | Dropout rate for transition |
+
+**Selection Guide:**
+
+**`numStructureLayers` and `numStructureBlocks`:**
+- Total IPA applications = `numStructureLayers` × `numStructureBlocks`
+- **Standard**: 5 layers × 1 block = 5 IPA applications (paper default)
+- **High accuracy**: 8 layers × 1 block or 4 layers × 2 blocks
+- **Memory-efficient**: 3 layers × 1 block
+
+**IPA Geometry Parameters (`ipaNumQkPoints`, `ipaNumVPoints`):**
+- These control the 3D geometric reasoning capacity
+- Q/K points: Used for computing attention weights based on 3D distances
+- V points: Used for aggregating geometric information
+- **AlphaFold2 defaults**: 4 Q/K points, 8 V points (recommended)
+- Reducing to 2/4 saves memory but reduces geometric expressiveness
+
+**`ipaHiddenDimension` and `ipaNumHeads`:**
+- Total hidden dimension = `ipaHiddenDimension` × `ipaNumHeads` = 16 × 12 = 192
+- **Standard**: 16 × 12 (paper default, matches AlphaFold2)
+- **High capacity**: 16 × 16 or 24 × 12
+- **Memory-efficient**: 12 × 8
+
+---
+
+#### Recommended Configurations
+
+**Standard Configuration (Paper Default):**
+```
+# General
+singleFeatureDimension 128
+pairFeatureDimension 128
+
+# Single Feature Network
+positionalEmbeddingDimension 128
+timestepEmbeddingDimension 128
+
+# Pair Feature Network
+relativePositionK 32
+templateType v1
+
+# Pair Transform Network
+numPairTransformLayers 5
+includeTriangularMultiplicativeUpdate True
+includeTriangularAttention False
+triangularMultiplicativeHiddenDimension 128
+triangularDropout 0.25
+pairTransitionN 4
+
+# Structure Network (IPA)
+numStructureLayers 5
+numStructureBlocks 1
+ipaHiddenDimension 16
+ipaNumHeads 12
+ipaNumQkPoints 4
+ipaNumVPoints 8
+ipaDropout 0.1
+numStructureTransitionLayers 1
+structureTransitionDropout 0.1
+```
+
+**Memory-Efficient Configuration (for limited GPU memory):**
+```
+# General - reduced dimensions
+singleFeatureDimension 64
+pairFeatureDimension 64
+
+# Pair Transform Network - fewer layers
+numPairTransformLayers 3
+triangularMultiplicativeHiddenDimension 64
+
+# Structure Network - lighter IPA
+numStructureLayers 3
+ipaHiddenDimension 12
+ipaNumHeads 8
+ipaNumQkPoints 2
+ipaNumVPoints 4
+```
+
+**High-Accuracy Configuration (for maximum quality):**
+```
+# General - increased capacity
+singleFeatureDimension 256
+pairFeatureDimension 256
+
+# Pair Transform Network - more layers
+numPairTransformLayers 8
+includeTriangularAttention True
+triangularAttentionHiddenDimension 32
+triangularAttentionNumHeads 4
+
+# Structure Network - deeper IPA
+numStructureLayers 8
+ipaNumHeads 16
+```
+
+---
+
+#### Training Hyperparameters
+
+| Parameter | Config Key | Default | Description |
+|-----------|------------|---------|-------------|
+| Num Timesteps | `numTimesteps` | 1000 | Diffusion timesteps |
+| Schedule | `schedule` | `cosine` | Noise schedule type |
+| Learning Rate | `learningRate` | 1e-4 | Adam optimizer learning rate |
+| Batch Size | `batchSize` | 32 | Training batch size |
+| Num Epochs | `numEpoches` | 50000 | Total training epochs |
+
+**Diffusion Schedule:**
+- `cosine`: Recommended (smoother noise schedule, better for proteins)
+- `linear`: Alternative (may require more timesteps)
+
+**Learning Rate:**
+- 1e-4 is robust for most configurations
+- Use learning rate warmup for large batch sizes
+- Consider 5e-5 for fine-tuning or when training is unstable
+
+---
+
 ### 2. Sampling
 
 To generate protein backbones using a pre-trained model.

@@ -100,6 +100,325 @@ kNeighbors 10
 - `zFactorRank`：边嵌入分解的秩（默认：`2`）
 - `kNeighbors`：距离图的最近邻数量（默认：`10`）
 
+---
+
+### Flash-IPA 超参数详解
+
+根据 [Flash IPA 论文](https://arxiv.org/abs/2505.11580) (Liu et al., 2025)，以下是两个关键超参数的详细说明：
+
+#### `zFactorRank` - 边嵌入分解秩
+
+**原理：** 在标准 IPA 中，边嵌入（pair embedding）$z_{ij}$ 是一个 $L \times L \times C_z$ 的张量，需要 $O(L^2)$ 显存。Flash IPA 采用**低秩分解**策略，将其分解为两个 1D 因子：
+
+$$z_{ij} \approx z^{(1)}_i \cdot (z^{(2)}_j)^T$$
+
+其中 $z^{(1)}, z^{(2)} \in \mathbb{R}^{L \times r \times C_z/r}$，$r$ 即为 `zFactorRank`。
+
+**作用：**
+- 将显存复杂度从 $O(L^2 \cdot C_z)$ 降低至 $O(L \cdot r \cdot C_z)$
+- 控制边嵌入近似的表达能力
+- 较大的秩保留更多残基对（pairwise）信息
+
+**推荐值：**
+| 场景 | 推荐值 | 说明 |
+|------|--------|------|
+| 短序列 (≤128) | 4-8 | 充足显存时优先保证精度 |
+| 中等序列 (128-512) | 2-4 | 平衡显存与精度 |
+| 长序列 (>512) | 1-2 | 优先节省显存 |
+| 显存紧张 | 1 | 最小化显存占用 |
+
+#### `kNeighbors` - 最近邻数量
+
+**原理：** Flash IPA 使用**稀疏注意力**策略。对于每个残基 $i$，模型仅计算其与空间中最近的 $k$ 个邻居的注意力权重，而非全连接（All-to-All）注意力。
+
+**作用：**
+- 将注意力计算复杂度从 $O(L^2)$ 降低至 $O(L \cdot k)$
+- 利用蛋白质结构的局部性：物理上相近的残基通常具有更强的相互作用
+- $k$ 值决定了局部感受野的大小
+
+**推荐值：**
+| 场景 | 推荐值 | 说明 |
+|------|--------|------|
+| 高精度需求 | 16-32 | 捕获更多长程相互作用 |
+| 标准训练 | 10-16 | 论文默认配置 |
+| 长序列 (>512) | 8-12 | 节省计算量 |
+| 超长序列 (>1024) | 6-10 | 最小化计算开销 |
+
+**物理直觉：** 蛋白质中每个残基平均与 8-12 个空间邻居有显著接触（接触距离 <8Å）。设置 `kNeighbors` 为该范围可覆盖主要的局部结构信息。
+
+#### 参数组合推荐
+
+| 配置名称 | `zFactorRank` | `kNeighbors` | `maximumNumResidues` | GPU 显存 |
+|----------|---------------|--------------|----------------------|----------|
+| **高精度短序列** | 4 | 16 | 128 | ≥16GB |
+| **标准中等序列** | 2 | 10 | 256 | ≥24GB |
+| **长序列省显存** | 2 | 8 | 512 | ≥32GB |
+| **超长序列** | 1 | 6 | 1024 | ≥48GB |
+
+**示例配置（256 残基，32GB 显存）：**
+```
+useFlashMode True
+zFactorRank 2
+kNeighbors 10
+maximumNumResidues 256
+```
+
+**示例配置（128 残基，追求精度）：**
+```
+useFlashMode True
+zFactorRank 4
+kNeighbors 16
+maximumNumResidues 128
+```
+
+---
+
+### 模型架构超参数指南
+
+基于 [Genie 论文](https://arxiv.org/abs/2301.12485) (Lin & AlQuraishi, 2023) 和 AlphaFold2 结构模块的设计原则，以下是四个主要网络组件的超参数选择详细指南。
+
+#### 网络架构概览
+
+Genie 的去噪网络由四个主要组件组成：
+1. **Single Feature Network（单特征网络）**：从位置编码和时间步编码生成每残基表示
+2. **Pair Feature Network（配对特征网络）**：从单特征和相对位置创建残基对表示
+3. **Pair Transform Network（配对变换网络）**：使用三角操作（来自 AlphaFold2 的 Evoformer）优化配对表示
+4. **Structure Network（结构网络）**：使用不变点注意力（IPA）更新 3D 坐标
+
+```
+输入（含噪帧）→ Single Feature Net → Pair Feature Net → Pair Transform Net → Structure Net → 输出（去噪帧）
+```
+
+---
+
+#### 1. 通用参数
+
+| 参数 | 配置键 | 默认值 | 描述 |
+|------|--------|--------|------|
+| 单特征维度 | `singleFeatureDimension` | 128 | 每残基表示的通道维度（$c_s$） |
+| 配对特征维度 | `pairFeatureDimension` | 128 | 残基对表示的通道维度（$c_p$） |
+
+**选择指南：**
+- 这两个维度应相等（$c_s = c_p$）以获得最佳信息流动
+- **标准训练**：128（论文默认值，平衡表达能力和效率）
+- **高容量模型**：256（更强表达能力，但配对特征显存约为 4 倍）
+- **显存受限**：64（降低容量但显著节省显存）
+
+---
+
+#### 2. Single Feature Network（单特征网络）
+
+单特征网络结合位置编码和扩散时间步编码来创建初始的每残基表示。
+
+| 参数 | 配置键 | 默认值 | 描述 |
+|------|--------|--------|------|
+| 位置嵌入维度 | `positionalEmbeddingDimension` | 128 | 正弦位置编码的维度 |
+| 时间步嵌入维度 | `timestepEmbeddingDimension` | 128 | 扩散时间步编码的维度 |
+
+**选择指南：**
+- 两个维度应与 `singleFeatureDimension` 匹配以实现无缝集成
+- 正弦编码遵循 Transformer 惯例：$PE(pos, 2i) = \sin(pos/10000^{2i/d})$
+- **建议**：保持与 `singleFeatureDimension` 相等（128）
+
+---
+
+#### 3. Pair Feature Network（配对特征网络）
+
+配对特征网络通过组合以下内容创建残基对表示：
+- 单特征的外积
+- 相对位置编码
+- 模板特征（来自当前结构估计的距离图）
+
+| 参数 | 配置键 | 默认值 | 描述 |
+|------|--------|--------|------|
+| 相对位置 K | `relativePositionK` | 32 | 相对位置的截断范围：$[-k, k]$ |
+| 模板类型 | `templateType` | `v1` | 模板特征提取方法 |
+
+**选择指南：**
+
+**`relativePositionK`：**
+- 创建 $(2k+1)$ 个位置 bins 用于相对位置编码
+- 默认值 32 → 65 个 bins，覆盖 -32 到 +32 的位置
+- **短序列（≤128）**：32 足够
+- **长序列（>256）**：考虑 64 以捕获更长程的位置信息
+- 物理直觉：大多数重要的结构接触发生在约 30 个残基范围内
+
+**`templateType`：**
+- `v1`：标准距离图特征（推荐）
+- 控制如何将当前结构估计编码为配对特征
+
+---
+
+#### 4. Pair Transform Network（配对变换网络）
+
+配对变换网络使用从 AlphaFold2 的 Evoformer 改编的操作来优化配对表示。这是计算最密集的组件，具有 $O(L^2)$ 的显存复杂度。
+
+| 参数 | 配置键 | 默认值 | 描述 |
+|------|--------|--------|------|
+| 变换层数 | `numPairTransformLayers` | 5 | 配对变换块的数量 |
+| 启用三角乘法 | `includeTriangularMultiplicativeUpdate` | True | 启用三角乘法更新 |
+| 启用三角注意力 | `includeTriangularAttention` | False | 启用三角注意力 |
+| 三角乘法隐藏维度 | `triangularMultiplicativeHiddenDimension` | 128 | 三角乘法的隐藏维度 |
+| 三角注意力隐藏维度 | `triangularAttentionHiddenDimension` | 32 | 三角注意力的每头隐藏维度 |
+| 三角注意力头数 | `triangularAttentionNumHeads` | 4 | 注意力头数量 |
+| 三角 Dropout | `triangularDropout` | 0.25 | 三角操作的 Dropout 率 |
+| 配对转换因子 N | `pairTransitionN` | 4 | 配对转换 FFN 的扩展因子 |
+
+**选择指南：**
+
+**`numPairTransformLayers`：**
+| 场景 | 推荐值 | 说明 |
+|------|--------|------|
+| 标准训练 | 5 | 论文默认值，良好平衡 |
+| 快速原型 | 2-3 | 精度降低但迭代更快 |
+| 高精度 | 8-10 | 超过 8 收益递减 |
+| Flash 模式 | 0 | 完全跳过以节省显存 |
+
+**`includeTriangularMultiplicativeUpdate` vs `includeTriangularAttention`：**
+- 三角**乘法**（默认开启）：$O(L^2 \cdot c)$ 复杂度，更高效
+- 三角**注意力**（默认关闭）：$O(L^2 \cdot L)$ 复杂度，更强表达能力但代价高
+- **建议**：大多数情况下仅使用乘法（论文默认）
+- 仅在有充足 GPU 显存且需要高精度时启用注意力
+
+**`triangularDropout`：**
+- 较高的 dropout（0.25-0.3）有助于防止在小数据集上过拟合
+- 较低的 dropout（0.1-0.15）适用于大数据集或欠拟合情况
+
+---
+
+#### 5. Structure Network（结构网络 / IPA）
+
+结构网络使用 AlphaFold2 的不变点注意力（IPA）来更新 3D 坐标，同时保持 SE(3) 等变性。
+
+| 参数 | 配置键 | 默认值 | 描述 |
+|------|--------|--------|------|
+| 结构层数 | `numStructureLayers` | 5 | IPA 层的数量 |
+| 结构块数 | `numStructureBlocks` | 1 | 结构模块迭代次数 |
+| IPA 隐藏维度 | `ipaHiddenDimension` | 16 | 每头隐藏维度 |
+| IPA 头数 | `ipaNumHeads` | 12 | 注意力头数量 |
+| IPA Q/K 点数 | `ipaNumQkPoints` | 4 | 每头的 query/key 3D 点数 |
+| IPA V 点数 | `ipaNumVPoints` | 8 | 每头的 value 3D 点数 |
+| IPA Dropout | `ipaDropout` | 0.1 | IPA 后的 Dropout 率 |
+| 转换层数 | `numStructureTransitionLayers` | 1 | 每个结构层的转换层数 |
+| 转换 Dropout | `structureTransitionDropout` | 0.1 | 转换的 Dropout 率 |
+
+**选择指南：**
+
+**`numStructureLayers` 和 `numStructureBlocks`：**
+- 总 IPA 应用次数 = `numStructureLayers` × `numStructureBlocks`
+- **标准**：5 层 × 1 块 = 5 次 IPA 应用（论文默认）
+- **高精度**：8 层 × 1 块 或 4 层 × 2 块
+- **省显存**：3 层 × 1 块
+
+**IPA 几何参数（`ipaNumQkPoints`、`ipaNumVPoints`）：**
+- 这些参数控制 3D 几何推理能力
+- Q/K 点：用于基于 3D 距离计算注意力权重
+- V 点：用于聚合几何信息
+- **AlphaFold2 默认值**：4 个 Q/K 点，8 个 V 点（推荐）
+- 减少到 2/4 可节省显存但降低几何表达能力
+
+**`ipaHiddenDimension` 和 `ipaNumHeads`：**
+- 总隐藏维度 = `ipaHiddenDimension` × `ipaNumHeads` = 16 × 12 = 192
+- **标准**：16 × 12（论文默认，与 AlphaFold2 匹配）
+- **高容量**：16 × 16 或 24 × 12
+- **省显存**：12 × 8
+
+---
+
+#### 推荐配置
+
+**标准配置（论文默认）：**
+```
+# 通用参数
+singleFeatureDimension 128
+pairFeatureDimension 128
+
+# Single Feature Network
+positionalEmbeddingDimension 128
+timestepEmbeddingDimension 128
+
+# Pair Feature Network
+relativePositionK 32
+templateType v1
+
+# Pair Transform Network
+numPairTransformLayers 5
+includeTriangularMultiplicativeUpdate True
+includeTriangularAttention False
+triangularMultiplicativeHiddenDimension 128
+triangularDropout 0.25
+pairTransitionN 4
+
+# Structure Network (IPA)
+numStructureLayers 5
+numStructureBlocks 1
+ipaHiddenDimension 16
+ipaNumHeads 12
+ipaNumQkPoints 4
+ipaNumVPoints 8
+ipaDropout 0.1
+numStructureTransitionLayers 1
+structureTransitionDropout 0.1
+```
+
+**省显存配置（显存受限时）：**
+```
+# 通用参数 - 降低维度
+singleFeatureDimension 64
+pairFeatureDimension 64
+
+# Pair Transform Network - 减少层数
+numPairTransformLayers 3
+triangularMultiplicativeHiddenDimension 64
+
+# Structure Network - 轻量 IPA
+numStructureLayers 3
+ipaHiddenDimension 12
+ipaNumHeads 8
+ipaNumQkPoints 2
+ipaNumVPoints 4
+```
+
+**高精度配置（追求最高质量）：**
+```
+# 通用参数 - 增加容量
+singleFeatureDimension 256
+pairFeatureDimension 256
+
+# Pair Transform Network - 更多层
+numPairTransformLayers 8
+includeTriangularAttention True
+triangularAttentionHiddenDimension 32
+triangularAttentionNumHeads 4
+
+# Structure Network - 更深的 IPA
+numStructureLayers 8
+ipaNumHeads 16
+```
+
+---
+
+#### 训练超参数
+
+| 参数 | 配置键 | 默认值 | 描述 |
+|------|--------|--------|------|
+| 时间步数 | `numTimesteps` | 1000 | 扩散时间步 |
+| 调度方式 | `schedule` | `cosine` | 噪声调度类型 |
+| 学习率 | `learningRate` | 1e-4 | Adam 优化器学习率 |
+| 批大小 | `batchSize` | 32 | 训练批大小 |
+| 训练轮数 | `numEpoches` | 50000 | 总训练轮数 |
+
+**扩散调度：**
+- `cosine`：推荐（更平滑的噪声调度，更适合蛋白质）
+- `linear`：备选（可能需要更多时间步）
+
+**学习率：**
+- 1e-4 对大多数配置都很稳健
+- 大批量时使用学习率预热
+- 微调或训练不稳定时考虑 5e-5
+
+---
+
 ### 2. 采样 (Sampling)
 
 使用预训练模型生成蛋白质骨架。

@@ -609,6 +609,29 @@ gradientClipVal 1.0
 - ✅ 无额外参数或显存开销
 - ✅ 适用于所有 GPU（稳定性不依赖 Flash Attention）
 
+**监控与跨实验比较：**
+
+当 `useMHCLoss=True` 时，系统会记录以下指标以便公平比较：
+
+| 指标 | 含义 | 用途 |
+|------|------|------|
+| `train_loss` | 总损失（RMSD + mHC 正则化） | 用于反向传播 |
+| `train/rmsd_loss` | 仅 RMSD 损失 | **跨实验比较** |
+| `train/mhc_reg` | mHC 正则化项 | 监控正则化强度 |
+
+**如何进行实验比较：**
+
+```
+# 实验1（不使用 mHC）: train_loss = 0.15
+# 实验2（使用 mHC）:   train/rmsd_loss = 0.14, train/mhc_reg = 0.002
+#
+# 公平比较：0.15 vs 0.14 → mHC 帮助降低了主损失
+```
+
+在 WandB 或 TensorBoard 中：
+- 比较 `train_loss`（无 mHC）与 `train/rmsd_loss`（有 mHC）进行公平评估
+- 监控 `train/mhc_reg` 确保正则化处于活跃但非主导状态
+
 ---
 
 ### Flash-IPA 超参数详解

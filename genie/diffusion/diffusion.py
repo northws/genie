@@ -196,7 +196,9 @@ class Diffusion(LightningModule, ABC):
 		s = self.sample_timesteps(t0.shape[0])
 		ts, tnoise = self.q(t0, s, mask)
 		loss = self.loss_fn(tnoise, ts, s, mask)
-		self.log('train_loss', loss, on_step=True, on_epoch=True, sync_dist=True)
+		# train_loss: 总损失（用于反向传播）
+		# 如果使用 mHC loss，会在 loss_fn 中单独记录 train/rmsd_loss 和 train/mhc_reg
+		self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True)
 		return loss
 
 	def configure_optimizers(self):

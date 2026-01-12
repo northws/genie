@@ -127,6 +127,15 @@ class Genie(Diffusion):
 				mask,
 				weight=mhc_weight
 			)
-			return trans_loss + mhc_reg
+			
+			# 分开记录，方便比较
+			# trans_loss: 主损失（可与不使用 mHC 的实验比较）
+			# mhc_reg: 正则化项（额外的稳定性损失）
+			# total_loss: 用于反向传播
+			self.log('train/rmsd_loss', trans_loss, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True)
+			self.log('train/mhc_reg', mhc_reg, on_step=True, on_epoch=True, prog_bar=False, sync_dist=True)
+			
+			total_loss = trans_loss + mhc_reg
+			return total_loss
 		
 		return trans_loss

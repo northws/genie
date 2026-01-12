@@ -667,6 +667,29 @@ gradientClipVal 1.0
 - ✅ No extra parameters or memory
 - ✅ Works on all GPUs (no Flash Attention dependency for stability)
 
+**Monitoring & Cross-Experiment Comparison:**
+
+When `useMHCLoss=True`, the following metrics are logged for fair comparison:
+
+| Metric | Description | Purpose |
+|--------|-------------|---------|
+| `train_loss` | Total loss (RMSD + mHC reg) | Used for backpropagation |
+| `train/rmsd_loss` | RMSD loss only | **Cross-experiment comparison** |
+| `train/mhc_reg` | mHC regularization term | Monitor regularization strength |
+
+**How to Compare Experiments:**
+
+```
+# Experiment 1 (without mHC): train_loss = 0.15
+# Experiment 2 (with mHC):    train/rmsd_loss = 0.14, train/mhc_reg = 0.002
+#
+# Fair comparison: 0.15 vs 0.14 → mHC helps reduce the primary loss
+```
+
+In WandB or TensorBoard:
+- Compare `train_loss` (no mHC) vs `train/rmsd_loss` (with mHC) for fair evaluation
+- Monitor `train/mhc_reg` to ensure regularization is active but not dominant
+
 ---
 
 ### Flash-IPA Hyperparameter Guide

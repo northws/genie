@@ -82,11 +82,19 @@ class Config:
 			'checkpoint_every_n_epoch': int(config.get('checkpointEveryEpoches', 500)),
 			'use_grad_checkpoint':          config.get('useGradientCheckpointing', False),
 			'use_flash_mode':               config.get('useFlashMode',             False),  # Memory-efficient Flash IPA mode
+			'use_mhc_mode':                 config.get('useMHCMode',               False),  # mHC (Manifold-Constrained Hyper-Connections) mode
+			'use_mhc_loss':                 config.get('useMHCLoss',               False),  # mHC as loss regularization only (no arch change)
+			'mhc_loss_weight':        float(config.get('mhcLossWeight',           0.01)),   # Weight for mHC loss regularization
 			# Large batch training optimizations
 			'accumulate_grad_batches':  int(config.get('accumulateGradBatches',  1)),      # Gradient accumulation steps
 			'warmup_epochs':            int(config.get('warmupEpochs',           0)),      # LR warmup epochs
 			'lr_scale_factor':        float(config.get('lrScaleFactor',          1.0)),    # LR scaling for large batch
 			'cosine_eta_min_factor':  float(config.get('cosineEtaMinFactor',     0.01)),   # Cosine annealing min LR factor (default 1%)
+			'gradient_clip_val':      float(config.get('gradientClipVal',        1.0)),    # Gradient clipping value (None to disable)
+			# mHC specific parameters
+			'mhc_expansion_rate':       int(config.get('mhcExpansionRate',       4)),      # Residual stream width expansion
+			'mhc_sinkhorn_iters':       int(config.get('mhcSinkhornIters',       20)),     # Sinkhorn-Knopp iterations
+			'mhc_alpha_init':         float(config.get('mhcAlphaInit',           0.01)),   # Gating factor initialization
 		}
 
 		self.optimization = {

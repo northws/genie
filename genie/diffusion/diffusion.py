@@ -13,6 +13,22 @@ try:
 except ImportError:
     HAS_FLASH_DENOISER = False
 
+# Conditional import for mHC Denoiser
+try:
+    from genie.model.mhc_denoiser import mHCDenoiser
+    HAS_MHC_DENOISER = True
+except ImportError as e:
+    print(f"Warning: mHC Denoiser not available: {e}")
+    HAS_MHC_DENOISER = False
+
+# Conditional import for mHC + Flash-IPA Denoiser
+try:
+    from genie.model.mhc_flash_denoiser import mHCFlashDenoiser
+    HAS_MHC_FLASH_DENOISER = True
+except ImportError as e:
+    print(f"Warning: mHC + Flash-IPA Denoiser not available: {e}")
+    HAS_MHC_FLASH_DENOISER = False
+
 
 class Diffusion(LightningModule, ABC):
 
@@ -21,18 +37,71 @@ class Diffusion(LightningModule, ABC):
 
 		self.config = config
 		
-		# Determine whether to use Flash mode
+		# Determine which mode to use
 		use_flash_mode = config.training.get('use_flash_mode', False)
+		use_mhc_mode = config.training.get('use_mhc_mode', False)
 		max_n_res = config.io.get('max_n_res', 256)
 		
-		if use_flash_mode:
+		# Priority: mHC+Flash > mHC > Flash > Standard
+		# Check if both mHC and Flash-IPA are requested
+		if use_mhc_mode and use_flash_mode:
+			if not HAS_MHC_FLASH_DENOISER:
+				print("Warning: Both mHC and Flash modes requested but mHCFlashDenoiser not available.")
+				if HAS_MHC_DENOISER:
+					print("  Falling back to mHC-only mode.")
+					use_flash_mode = False
+				elif HAS_FLASH_DENOISER:
+					print("  Falling back to Flash-only mode.")
+					use_mhc_mode = False
+				else:
+					print("  Falling back to standard Denoiser.")
+					use_mhc_mode = False
+					use_flash_mode = False
+			else:
+				print(f"Using mHCFlashDenoiser (mHC + Flash-IPA combined) for max_n_res={max_n_res}")
+		elif use_mhc_mode:
+			if not HAS_MHC_DENOISER:
+				print("Warning: use_mhc_mode=True but mHC Denoiser not available. Falling back to standard Denoiser.")
+				use_mhc_mode = False
+			else:
+				print(f"Using mHCDenoiser (Manifold-Constrained Hyper-Connections) for max_n_res={max_n_res}")
+		elif use_flash_mode:
 			if not HAS_FLASH_DENOISER:
 				print("Warning: use_flash_mode=True but flash_ipa not installed. Falling back to standard Denoiser.")
 				use_flash_mode = False
 			else:
 				print(f"Using FlashDenoiser (memory-efficient mode) for max_n_res={max_n_res}")
 		
-		if use_flash_mode and HAS_FLASH_DENOISER:
+		if use_mhc_mode and use_flash_mode and HAS_MHC_FLASH_DENOISER:
+			# Use combined mHC + Flash-IPA Denoiser
+			model_params = {k: v for k, v in self.config.model.items() 
+			               if k not in ['max_n_res', 'use_flash_ipa', 'use_grad_checkpoint', 'z_factor_rank', 'k_neighbors', 'use_flash_attn_3']}
+			self.model = mHCFlashDenoiser(
+				**model_params,
+				n_timestep=self.config.diffusion['n_timestep'],
+				max_n_res=max_n_res,
+				z_factor_rank=config.model.get('z_factor_rank', 2),
+				k_neighbors=config.model.get('k_neighbors', 10),
+				use_grad_checkpoint=config.training.get('use_grad_checkpoint', False),
+				use_flash_attn_3=config.model.get('use_flash_attn_3', True),
+				mhc_expansion_rate=config.training.get('mhc_expansion_rate', 4),
+				mhc_sinkhorn_iters=config.training.get('mhc_sinkhorn_iters', 20),
+				mhc_alpha_init=config.training.get('mhc_alpha_init', 0.01),
+			)
+		elif use_mhc_mode and HAS_MHC_DENOISER:
+			# Use mHC Denoiser for training stability
+			model_params = {k: v for k, v in self.config.model.items() 
+			               if k not in ['max_n_res', 'use_flash_ipa', 'use_grad_checkpoint', 'z_factor_rank', 'k_neighbors', 'use_flash_attn_3']}
+			self.model = mHCDenoiser(
+				**model_params,
+				n_timestep=self.config.diffusion['n_timestep'],
+				max_n_res=max_n_res,
+				use_grad_checkpoint=config.training.get('use_grad_checkpoint', False),
+				mhc_expansion_rate=config.training.get('mhc_expansion_rate', 4),
+				mhc_sinkhorn_iters=config.training.get('mhc_sinkhorn_iters', 20),
+				mhc_alpha_init=config.training.get('mhc_alpha_init', 0.01),
+			)
+		elif use_flash_mode and HAS_FLASH_DENOISER:
 			# Use memory-efficient Flash Denoiser
 			# Extract only the parameters FlashDenoiser needs from config.model
 			# (avoid duplicating max_n_res which is already in config.model)
@@ -131,9 +200,18 @@ class Diffusion(LightningModule, ABC):
 		return loss
 
 	def configure_optimizers(self):
-		# Optimization: Use Fused AdamW if available on GPU
-		# Note: Gradient Clipping must be disabled in Trainer for this to work
-		use_fused = torch.cuda.is_available()
+		# Check if gradient clipping is enabled
+		gradient_clip_val = self.config.training.get('gradient_clip_val', 1.0)
+		
+		# Fused AdamW is incompatible with gradient clipping
+		# Disable fused if gradient clipping is enabled
+		if gradient_clip_val is not None and gradient_clip_val > 0:
+			use_fused = False
+			print(f"[Optimizer] Disabling fused AdamW (gradient clipping enabled: {gradient_clip_val})")
+		else:
+			use_fused = torch.cuda.is_available()
+			if use_fused:
+				print("[Optimizer] Using fused AdamW (gradient clipping disabled)")
 		
 		# Large batch training: Scale learning rate
 		# Linear scaling rule: lr_new = lr_base * (batch_size / base_batch_size)
@@ -172,14 +250,20 @@ class Diffusion(LightningModule, ABC):
 			# Optional: Cosine decay after warmup
 			total_epochs = self.config.training['n_epoch']
 			eta_min_factor = self.config.training.get('cosine_eta_min_factor', 0.01)
+			
+			# Fix: Ensure T_max >= 1 to avoid division by zero
+			cosine_epochs = max(1, total_epochs - warmup_epochs)
+			if total_epochs <= warmup_epochs:
+				print(f"[Warning] total_epochs ({total_epochs}) <= warmup_epochs ({warmup_epochs}), using minimal cosine decay")
+			
 			cosine_scheduler = CosineAnnealingLR(
 				optimizer,
-				T_max=total_epochs - warmup_epochs,
+				T_max=cosine_epochs,
 				eta_min=scaled_lr * eta_min_factor
 			)
 			
 			print(f"[LR Schedule] Warmup: {scaled_lr * 0.1:.2e} -> {scaled_lr:.2e} ({warmup_epochs} epochs)")
-			print(f"[LR Schedule] Cosine decay: {scaled_lr:.2e} -> {scaled_lr * eta_min_factor:.2e} ({total_epochs - warmup_epochs} epochs)")
+			print(f"[LR Schedule] Cosine decay: {scaled_lr:.2e} -> {scaled_lr * eta_min_factor:.2e} ({cosine_epochs} epochs)")
 			
 			scheduler = SequentialLR(
 				optimizer,

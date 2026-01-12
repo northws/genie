@@ -102,9 +102,11 @@ def main(args):
         # Use 'bf16-mixed' if you are on If you are running on NVIDIA GPUs starting from A100 for better stability.
         precision='bf16-mixed' if torch.cuda.is_bf16_supported() else '16-mixed',
         
-        # [Stability] Gradient Clipping disabled to allow Fused AdamW
-        # gradient_clip_val=1.0,
-        gradient_clip_val=None,
+        # [Stability] Gradient Clipping
+        # CRITICAL: Enable gradient clipping for large batch training stability
+        # Prevents gradient explosion especially with gradient accumulation
+        gradient_clip_val=config.training['gradient_clip_val'],
+        gradient_clip_algorithm='norm',  # Clip by global norm
 
         # [Large Batch] Gradient accumulation for effective larger batch size
         accumulate_grad_batches=accumulate_grad_batches,

@@ -6,6 +6,13 @@ from genie.utils.loss import rmsd
 from genie.utils.affine_utils import T
 from genie.utils.geo_utils import compute_frenet_frames
 
+# Import mHC loss regularization
+try:
+    from genie.diffusion.mhc_loss import compute_mhc_regularization
+    HAS_MHC_LOSS = True
+except ImportError:
+    HAS_MHC_LOSS = False
+
 
 class Genie(Diffusion):
 
@@ -107,4 +114,19 @@ class Genie(Diffusion):
 			mask
 		)
 
+		# Add mHC regularization if enabled
+		use_mhc_loss = getattr(self.config.training, 'use_mhc_loss', False) if hasattr(self.config, 'training') else False
+		if not use_mhc_loss:
+			use_mhc_loss = self.config.training.get('use_mhc_loss', False) if isinstance(self.config.training, dict) else False
+		
+		if use_mhc_loss and HAS_MHC_LOSS:
+			mhc_weight = self.config.training.get('mhc_loss_weight', 0.01) if isinstance(self.config.training, dict) else 0.01
+			mhc_reg = compute_mhc_regularization(
+				noise_pred_trans,
+				tnoise.trans,
+				mask,
+				weight=mhc_weight
+			)
+			return trans_loss + mhc_reg
+		
 		return trans_loss

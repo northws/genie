@@ -2,6 +2,24 @@
 
 Genie 是一个基于扩散模型的蛋白质从头设计工具，通过对定向残基云进行等变扩散来实现。
 
+## 模型架构概览
+
+| Standard Genie | Genie + FlashIPA |
+| :---: | :---: |
+| <img src="docs/images/genie_arch.png" width="300"/> | <img src="docs/images/genie_flash_arch.png" width="300"/> |
+
+| Genie + mHC | Genie + FlashIPA + mHC (Full) |
+| :---: | :---: |
+| <img src="docs/images/genie_mhc_arch.png" width="300"/> | <img src="docs/images/genie_flash_mhc_arch.png" width="300"/> |
+
+**Genie + FlashIPA + mHC Loss (Regularization Only)**
+
+<p align="center">
+<img src="docs/images/genie_flash_mhc_loss_arch.png" width="300"/>
+</p>
+
+> **说明**：mHC Loss 模式仅在损失函数中添加正则化项，不修改网络架构。适合快速实验训练稳定性改进。
+
 ## 关于本项目
 
 本项目是对 Yeqing Lin 和 Mohammed AlQuraishi 原始 [Genie 实现](https://github.com/aqlaboratory/genie)的**优化复现**。
@@ -9,6 +27,7 @@ Genie 是一个基于扩散模型的蛋白质从头设计工具，通过对定�
 **主要改进：**
 - ✨ 集成 Flash-IPA，实现内存高效的长序列生成
 - 🔗 **支持 mHC + Flash-IPA 组合**，兼顾训练稳定性与内存效率
+- 🧠 **mHC 全覆盖**：StructureNet + PairTransformNet 均采用 mHC 重构
 - ⚡ Flash Attention 优化，训练速度提升 3.1 倍
 - 💾 Flash 模式下 GPU 显存降低 95%
 - 🚀 大 batch 训练优化（学习率缩放、预热、梯度累积）
@@ -880,6 +899,14 @@ $$x_{l+1} = H_{\text{res}} \otimes x_l + H_{\text{post}}^T \otimes F(H_{\text{pr
 - **恒等保持**：初始化时（$\alpha \approx 0$, $b_{\text{res}} \approx I$），$H_{\text{res}} \approx I$（单位矩阵），确保稳定的梯度流
 - **Birkhoff Polytope**：双随机矩阵保持向量范数，防止梯度爆炸/消失
 - **扩展流**：多个并行路径允许更丰富的信息流动，同时保持稳定性
+
+**mHC 覆盖范围（`useMHCMode=True`）：**
+
+当启用 mHC 模式时，以下模块都会使用 mHC 重构：
+- ✅ **mHCStructureNet**: Structure Network 层使用 mHC 残差混合
+- ✅ **mHCPairTransformNet**: Pair Transform 层使用 mHC 残差混合（新增！）
+
+Pair Transform 的 mHC 重构基于论文核心公式，将 Pair Features $[B, L, L, C_p]$ 扩展为 $[B, L, L, n, C_p]$，通过双随机矩阵 $H_{\text{res}}$ 进行稳定的残差混合。
 
 **配置参数：**
 ```

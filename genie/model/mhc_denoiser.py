@@ -13,6 +13,7 @@ from torch import nn
 from genie.model.single_feature_net import SingleFeatureNet
 from genie.model.pair_feature_net import PairFeatureNet
 from genie.model.pair_transform_net import PairTransformNet
+from genie.model.mhc_pair_transform_net import mHCPairTransformNet
 from genie.model.mhc_structure_net import mHCStructureNet
 
 
@@ -97,9 +98,9 @@ class mHCDenoiser(nn.Module):
             template_type
         )
         
-        # Pair transform network (same as standard Denoiser)
-        # Note: This is O(L²) memory, but we keep it for feature quality
-        self.pair_transform_net = PairTransformNet(
+        # Pair transform network with mHC (Manifold-Constrained Hyper-Connections)
+        # Uses mHCPairTransformNet for improved training stability
+        self.pair_transform_net = mHCPairTransformNet(
             c_p,
             n_pair_transform_layer,
             include_mul_update,
@@ -109,6 +110,8 @@ class mHCDenoiser(nn.Module):
             n_head_tri,
             tri_dropout,
             pair_transition_n,
+            mhc_expansion_rate=mhc_expansion_rate,
+            mhc_sinkhorn_iters=mhc_sinkhorn_iters,
             use_grad_checkpoint=use_grad_checkpoint
         ) if n_pair_transform_layer > 0 else None
         

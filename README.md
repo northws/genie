@@ -2,11 +2,65 @@
 
 Genie is a diffusion-based model for de novo protein design through equivariantly diffusing oriented residue clouds.
 
-This project is a reproduction and optimization of [https://github.com/aqlaboratory/genie](https://github.com/aqlaboratory/genie).
+## About This Project
+
+This project is an **optimized reproduction** of the original [Genie implementation](https://github.com/aqlaboratory/genie) by Yeqing Lin and Mohammed AlQuraishi.
+
+**Key Improvements:**
+- ✨ Integrated Flash-IPA for memory-efficient long sequence generation
+- ⚡ 3.1x training speedup with Flash Attention optimization
+- 💾 95% GPU memory reduction in Flash mode
+- 🚀 Large batch training optimizations (LR scaling, warmup, gradient accumulation)
+- 🔧 PyTorch 2.9+ compatibility and modern toolchain support
+
+**Original Work:**
+- Paper: [Generating Novel Protein Backbones with Equivariant Diffusion](https://arxiv.org/abs/2301.12485) (Lin & AlQuraishi, 2023)
+- Original Repository: https://github.com/aqlaboratory/genie
+- License: Apache 2.0
+
+**This Repository:**
+- Original Genie code: Apache License 2.0
+- New optimizations and features: MIT License
+- See [LICENSE.md](LICENSE.md) for details
+
+---
 
 **Read this in other languages:  [中文](README_zh.md)**
 
 **View the demo notebook:** [genie_demo.ipynb](genie_demo.ipynb)
+
+---
+
+## Citations and Acknowledgements
+
+This project is built upon several excellent open-source projects and academic research results:
+
+### Core Algorithm & Models
+
+**Genie (Original Implementation)**  
+Lin, Y. C., & AlQuraishi, M. (2023). Generating protein backbone structures with equivariant diffusion models. *arXiv preprint arXiv:2301.12485*.  
+[[Paper]](https://arxiv.org/abs/2301.12485) [[Code]](https://github.com/aqlaboratory/genie)
+
+**Flash-IPA (Optimization)**  
+Flagship Pioneering. (2023). Flash-IPA: Accelerated Invariant Point Attention. GitHub.  
+[[Code]](https://github.com/flagshippioneering/flash_ipa)
+
+### Evaluation Pipeline Components
+
+**ProteinMPNN (Sequence Design)**  
+Dauparas, J., et al. (2022). Robust deep learning–based protein sequence design using ProteinMPNN. *Science*, 378(6615), 49-56.  
+[[Paper]](https://www.science.org/doi/10.1126/science.add2187) [[Code]](https://github.com/dauparas/ProteinMPNN)
+
+**ESMFold / ESM-2 (Structure Prediction)**  
+Lin, Z., et al. (2023). Evolutionary-scale prediction of atomic-level protein structure with a language model. *Science*, 379(6637), 1123-1130.  
+[[Paper]](https://www.science.org/doi/10.1126/science.ade2574) [[Code]](https://github.com/facebookresearch/esm)
+
+**TM-score & TM-align (Structure Alignment)**  
+Zhang, Y., & Skolnick, J. (2005). TM-align: a protein structure alignment algorithm based on the TM-score. *Nucleic Acids Research*, 33(7), 2302-2309.  
+[[Paper]](https://academic.oup.com/nar/article/33/7/2302/2401364) [[Code]](https://zhanggroup.org/TM-align/)
+
+---
+
 ## Installation
 
 1.  **Clone the repository:**
@@ -779,31 +833,6 @@ python evaluations/plot.py -i runs/.../evaluations -p mds -o outputs/plots
 -   `packages/`: External tools (TMscore).
 -   `scripts/`: Utility scripts for setup.
 -   `weights/`: Pre-trained model weights.
-
-## Citations and Acknowledgements
-
-This project is built upon several excellent open-source projects and academic research results：
-### Core Algorithm & Models
-*   **Genie (Original Implementation)**:
-    Lin, Y. C., & AlQuraishi, M. (2023). Generating protein backbone structures with equivariant diffusion models. *arXiv preprint arXiv:2301.12485*.
-    [[Paper]](https://arxiv.org/abs/2301.12485) [[Code]](https://github.com/aqlaboratory/genie)
-
-*   **Flash-IPA (Optimization)**:
-    Flagship Pioneering. (2023). Flash-IPA: Accelerated Invariant Point Attention. GitHub.
-    [[Code]](https://github.com/flagshippioneering/flash_ipa)
-
-### Evaluation Pipeline
-*   **ProteinMPNN (Sequence Design)**:
-    Dauparas, J., et al. (2022). Robust deep learning–based protein sequence design using ProteinMPNN. *Science*, 378(6615), 49-56.
-    [[Paper]](https://www.science.org/doi/10.1126/science.add2187) [[Code]](https://github.com/dauparas/ProteinMPNN)
-
-*   **ESMFold / ESM-2 (Structure Prediction)**:
-    Lin, Z., et al. (2023). Evolutionary-scale prediction of atomic-level protein structure with a language model. *Science*, 379(6637), 1123-1130.
-    [[Paper]](https://www.science.org/doi/10.1126/science.ade2574) [[Code]](https://github.com/facebookresearch/esm)
-
-*   **TM-score & TM-align (Structure Alignment)**:
-    Zhang, Y., & Skolnick, J. (2005). TM-align: a protein structure alignment algorithm based on the TM-score. *Nucleic Acids Research*, 33(7), 2302-2309.
-    [[Paper]](https://academic.oup.com/nar/article/33/7/2302/2401364) [[Code]](https://zhanggroup.org/TM-align/)
 
 ## Gallery
 

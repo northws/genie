@@ -2,7 +2,64 @@
 
 Genie 是一个基于扩散模型的蛋白质从头设计工具，通过对定向残基云进行等变扩散来实现。
 
-本项目是对 [https://github.com/aqlaboratory/genie](https://github.com/aqlaboratory/genie) 的复现及优化。
+## 关于本项目
+
+本项目是对 Yeqing Lin 和 Mohammed AlQuraishi 原始 [Genie 实现](https://github.com/aqlaboratory/genie)的**优化复现**。
+
+**主要改进：**
+- ✨ 集成 Flash-IPA，实现内存高效的长序列生成
+- ⚡ Flash Attention 优化，训练速度提升 3.1 倍
+- 💾 Flash 模式下 GPU 显存降低 95%
+- 🚀 大 batch 训练优化（学习率缩放、预热、梯度累积）
+- 🔧 支持 PyTorch 2.9+ 和现代工具链
+
+**原始工作：**
+- 论文：[Generating Novel Protein Backbones with Equivariant Diffusion](https://arxiv.org/abs/2301.12485) (Lin & AlQuraishi, 2023)
+- 原始仓库：https://github.com/aqlaboratory/genie
+- 许可证：Apache 2.0
+
+**本仓库：**
+- 原始 Genie 代码：Apache License 2.0
+- 新增优化和功能：MIT License
+- 详见 [LICENSE.md](LICENSE.md)
+
+---
+
+**其他语言版本: [English](README.md)**
+
+**查看示例 Notebook：** [genie_demo.ipynb](genie_demo.ipynb)
+
+---
+
+## 引用与致谢
+
+本项目构建于多个优秀的开源项目和学术研究成果之上：
+
+### 核心算法与模型
+
+**Genie（原始实现）**  
+Lin, Y. C., & AlQuraishi, M. (2023). Generating protein backbone structures with equivariant diffusion models. *arXiv preprint arXiv:2301.12485*.  
+[[论文]](https://arxiv.org/abs/2301.12485) [[代码]](https://github.com/aqlaboratory/genie)
+
+**Flash-IPA（优化加速）**  
+Flagship Pioneering. (2023). Flash-IPA: Accelerated Invariant Point Attention. GitHub.  
+[[代码]](https://github.com/flagshippioneering/flash_ipa)
+
+### 评估流程组件
+
+**ProteinMPNN（序列设计）**  
+Dauparas, J., et al. (2022). Robust deep learning–based protein sequence design using ProteinMPNN. *Science*, 378(6615), 49-56.  
+[[论文]](https://www.science.org/doi/10.1126/science.add2187) [[代码]](https://github.com/dauparas/ProteinMPNN)
+
+**ESMFold / ESM-2（结构预测）**  
+Lin, Z., et al. (2023). Evolutionary-scale prediction of atomic-level protein structure with a language model. *Science*, 379(6637), 1123-1130.  
+[[论文]](https://www.science.org/doi/10.1126/science.ade2574) [[代码]](https://github.com/facebookresearch/esm)
+
+**TM-score & TM-align（结构对齐）**  
+Zhang, Y., & Skolnick, J. (2005). TM-align: a protein structure alignment algorithm based on the TM-score. *Nucleic Acids Research*, 33(7), 2302-2309.  
+[[论文]](https://academic.oup.com/nar/article/33/7/2302/2401364) [[代码]](https://zhanggroup.org/TM-align/)
+
+---
 
 ## 安装
 
@@ -777,32 +834,6 @@ python evaluations/plot.py -i runs/.../evaluations -p mds -o outputs/plots
 -   `packages/`: 外部工具 (TMscore)。
 -   `scripts/`: 设置用的实用脚本。
 -   `weights/`: 预训练模型权重。
-
-## 引用与致谢 (Citations and Acknowledgements)
-
-本项目构建于多个优秀的开源项目成果之上。
-
-### 核心算法与模型
-*   **Genie (Original Implementation)**:
-    Lin, Y. C., & AlQuraishi, M. (2023). Generating protein backbone structures with equivariant diffusion models. *arXiv preprint arXiv:2301.12485*.
-    [[Paper]](https://arxiv.org/abs/2301.12485) [[Code]](https://github.com/aqlaboratory/genie)
-
-*   **Flash-IPA (Optimization)**:
-    Flagship Pioneering. (2023). Flash-IPA: Accelerated Invariant Point Attention. GitHub.
-    [[Code]](https://github.com/flagshippioneering/flash_ipa)
-
-### 评估流程 (Evaluation Pipeline)
-*   **ProteinMPNN (Sequence Design)**:
-    Dauparas, J., et al. (2022). Robust deep learning–based protein sequence design using ProteinMPNN. *Science*, 378(6615), 49-56.
-    [[Paper]](https://www.science.org/doi/10.1126/science.add2187) [[Code]](https://github.com/dauparas/ProteinMPNN)
-
-*   **ESMFold / ESM-2 (Structure Prediction)**:
-    Lin, Z., et al. (2023). Evolutionary-scale prediction of atomic-level protein structure with a language model. *Science*, 379(6637), 1123-1130.
-    [[Paper]](https://www.science.org/doi/10.1126/science.ade2574) [[Code]](https://github.com/facebookresearch/esm)
-
-*   **TM-score & TM-align (Structure Alignment)**:
-    Zhang, Y., & Skolnick, J. (2005). TM-align: a protein structure alignment algorithm based on the TM-score. *Nucleic Acids Research*, 33(7), 2302-2309.
-    [[Paper]](https://academic.oup.com/nar/article/33/7/2302/2401364) [[Code]](https://zhanggroup.org/TM-align/)
 
 ## 图库 (Gallery)
 

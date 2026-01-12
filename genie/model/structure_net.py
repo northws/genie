@@ -6,12 +6,12 @@ from genie.model.modules.invariant_point_attention import InvariantPointAttentio
 from genie.model.modules.structure_transition import StructureTransition
 from genie.model.modules.backbone_update import BackboneUpdate
 
-# Optimization: Try to import FlashIPA
+# Optimization: Try to import FlashIPA (from genie.flash_ipa, modified for PyTorch 2.9)
 try:
-    from flash_ipa.ipa import InvariantPointAttention as FlashIPA, IPAConfig
-    from flash_ipa.factorizer import LinearFactorizer
-    from flash_ipa.rigid import create_rigid
-    from flash_ipa.utils import ANG_TO_NM_SCALE
+    from genie.flash_ipa.ipa import InvariantPointAttention as FlashIPA, IPAConfig
+    from genie.flash_ipa.factorizer import LinearFactorizer
+    from genie.flash_ipa.rigid import create_rigid
+    from genie.flash_ipa.utils import ANG_TO_NM_SCALE
 
     HAS_FLASH_IPA = True
 except ImportError:
@@ -54,9 +54,18 @@ class StructureLayer(nn.Module):
             # Assuming z_factor_rank=2 as per README example, or we could make it configurable
             self.z_factor_rank = 2
             print(f"StructureLayer initialized with FlashIPA enabled. (Rank={self.z_factor_rank})")
+            
+            # Calculate headdim_eff to determine optimal attn_dtype
+            # When headdim_eff > 256, Flash Attention requires fp16 (FFPA mode)
+            headdim_eff = max(
+                c_hidden_ipa + 5 * n_qk_point + (self.z_factor_rank * n_head),
+                c_hidden_ipa + 3 * n_v_point + (self.z_factor_rank * c_p // 4),
+            )
+            attn_dtype = "fp16" if headdim_eff > 256 else "bf16"
+            
             ipa_conf = IPAConfig(
                 use_flash_attn=True,
-                attn_dtype="bf16", # Assuming Ampere+ GPU as per context
+                attn_dtype=attn_dtype,
                 c_s=c_s,
                 c_z=c_p,
                 c_hidden=c_hidden_ipa,

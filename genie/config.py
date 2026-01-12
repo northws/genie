@@ -70,6 +70,7 @@ class Config:
 			# Flash IPA specific parameters (only used when useFlashMode=True)
 			'z_factor_rank':                  int(config.get('zFactorRank',                             2)),
 			'k_neighbors':                    int(config.get('kNeighbors',                              10)),
+			'use_flash_attn_3':                   config.get('useFlashAttn3',                           True),  # Use FA3 on Hopper GPUs if available
 
 		}
 

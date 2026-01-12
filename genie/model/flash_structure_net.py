@@ -19,16 +19,16 @@ from torch.utils.checkpoint import checkpoint
 from genie.model.modules.structure_transition import StructureTransition
 from genie.model.modules.backbone_update import BackboneUpdate
 
-# Import Flash IPA components
+# Import Flash IPA components (from genie.flash_ipa, modified for PyTorch 2.9)
 try:
-    from flash_ipa.ipa import InvariantPointAttention as FlashIPA, IPAConfig
-    from flash_ipa.edge_embedder import EdgeEmbedder, EdgeEmbedderConfig
-    from flash_ipa.rigid import create_rigid
-    from flash_ipa.utils import ANG_TO_NM_SCALE
+    from genie.flash_ipa.ipa import InvariantPointAttention as FlashIPA, IPAConfig
+    from genie.flash_ipa.edge_embedder import EdgeEmbedder, EdgeEmbedderConfig
+    from genie.flash_ipa.rigid import create_rigid
+    from genie.flash_ipa.utils import ANG_TO_NM_SCALE
     HAS_FLASH_IPA = True
 except ImportError:
     HAS_FLASH_IPA = False
-    print("Warning: flash_ipa not installed. FlashStructureNet will not be available.")
+    print("Warning: genie.flash_ipa not available. FlashStructureNet will not be available.")
 
 
 class FlashStructureLayer(nn.Module):
@@ -53,7 +53,8 @@ class FlashStructureLayer(nn.Module):
                  max_n_res,
                  z_factor_rank=2,
                  k_neighbors=10,
-                 use_grad_checkpoint=False
+                 use_grad_checkpoint=False,
+                 use_flash_attn_3=True
                  ):
         super(FlashStructureLayer, self).__init__()
         
@@ -66,10 +67,19 @@ class FlashStructureLayer(nn.Module):
         self.z_factor_rank = z_factor_rank
         self.use_grad_checkpoint = use_grad_checkpoint
         
+        # Calculate headdim_eff to determine optimal attn_dtype
+        # When headdim_eff > 256, Flash Attention requires fp16 (FFPA mode)
+        headdim_eff = max(
+            c_hidden_ipa + 5 * n_qk_point + (z_factor_rank * n_head),
+            c_hidden_ipa + 3 * n_v_point + (z_factor_rank * c_p // 4),
+        )
+        attn_dtype = "fp16" if headdim_eff > 256 else "bf16"
+        
         # Flash IPA configuration
         ipa_conf = IPAConfig(
             use_flash_attn=True,
-            attn_dtype="bf16",
+            use_flash_attn_3=use_flash_attn_3,  # Use FA3 on Hopper GPUs if available
+            attn_dtype=attn_dtype,
             c_s=c_s,
             c_z=c_p,
             c_hidden=c_hidden_ipa,
@@ -172,7 +182,8 @@ class FlashStructureNet(nn.Module):
                  max_n_res,
                  z_factor_rank=2,
                  k_neighbors=10,
-                 use_grad_checkpoint=False
+                 use_grad_checkpoint=False,
+                 use_flash_attn_3=True
                  ):
         super(FlashStructureNet, self).__init__()
         
@@ -185,6 +196,8 @@ class FlashStructureNet(nn.Module):
         print(f"FlashStructureNet: Initializing with {n_structure_layer} layers, "
               f"{n_structure_block} blocks, max_n_res={max_n_res}")
         print(f"FlashStructureNet: Using flash_1d_bias mode (O(L) memory for edge features)")
+        if use_flash_attn_3:
+            print(f"FlashStructureNet: FA3 mode enabled (will use on Hopper GPUs if available)")
         
         layers = [
             FlashStructureLayer(
@@ -194,7 +207,8 @@ class FlashStructureNet(nn.Module):
                 max_n_res=max_n_res,
                 z_factor_rank=z_factor_rank,
                 k_neighbors=k_neighbors,
-                use_grad_checkpoint=use_grad_checkpoint
+                use_grad_checkpoint=use_grad_checkpoint,
+                use_flash_attn_3=use_flash_attn_3
             )
             for _ in range(n_structure_layer)
         ]

@@ -72,7 +72,8 @@ class FlashDenoiser(nn.Module):
                  max_n_res=512,
                  z_factor_rank=2,
                  k_neighbors=10,
-                 use_grad_checkpoint=False
+                 use_grad_checkpoint=False,
+                 use_flash_attn_3=True  # Use FA3 on Hopper GPUs if available
                  ):
         super(FlashDenoiser, self).__init__()
         
@@ -93,6 +94,7 @@ class FlashDenoiser(nn.Module):
         print(f"  k_neighbors: {k_neighbors}")
         print(f"  n_structure_layer: {n_structure_layer}")
         print(f"  n_structure_block: {n_structure_block}")
+        print(f"  use_flash_attn_3: {use_flash_attn_3}")
         if n_pair_transform_layer > 0:
             print(f"  WARNING: n_pair_transform_layer={n_pair_transform_layer} is ignored in Flash mode")
         print("  PairTransformNet: DISABLED (O(L²) -> O(L) memory)")
@@ -133,7 +135,8 @@ class FlashDenoiser(nn.Module):
             max_n_res=max_n_res,
             z_factor_rank=z_factor_rank,
             k_neighbors=k_neighbors,
-            use_grad_checkpoint=use_grad_checkpoint
+            use_grad_checkpoint=use_grad_checkpoint,
+            use_flash_attn_3=use_flash_attn_3
         )
 
     def forward(self, ts, timesteps, mask):
@@ -201,5 +204,6 @@ def create_flash_denoiser_from_config(config):
         max_n_res=config.io['max_n_res'],
         z_factor_rank=config.model.get('z_factor_rank', 2),
         k_neighbors=config.model.get('k_neighbors', 10),
-        use_grad_checkpoint=config.training.get('use_grad_checkpoint', False)
+        use_grad_checkpoint=config.training.get('use_grad_checkpoint', False),
+        use_flash_attn_3=config.model.get('use_flash_attn_3', True)
     )

@@ -45,6 +45,36 @@ This project is a reproduction and optimization of [https://github.com/aqlaborat
 
 ### 1. Training
 
+#### Training Objective
+
+Genie uses a **denoising diffusion probabilistic model (DDPM)** framework, following the approach described in [Lin & AlQuraishi, 2023](https://arxiv.org/abs/2301.12485). The model learns to denoise oriented residue clouds by predicting the noise added during the forward diffusion process.
+
+**Forward Process (Diffusion):**
+
+Given a protein backbone represented by C$\alpha$ coordinates $\mathbf{x}_0$, the forward process gradually adds Gaussian noise over $T$ timesteps:
+
+$$q(\mathbf{x}_t | \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_t; \sqrt{\bar{\alpha}_t}\mathbf{x}_0, (1-\bar{\alpha}_t)\mathbf{I})$$
+
+where $\bar{\alpha}_t = \prod_{s=1}^{t} \alpha_s$ and $\alpha_t = 1 - \beta_t$ with $\beta_t$ being the noise schedule.
+
+**Training Loss:**
+
+The model $\epsilon_\theta$ is trained to predict the noise $\epsilon$ added at each timestep. The loss function is the **Root Mean Square Deviation (RMSD)** between predicted and actual noise:
+
+$$\mathcal{L} = \mathbb{E}_{t, \mathbf{x}_0, \epsilon} \left[ \frac{1}{N}\sum_{i=1}^{N} \|\epsilon_\theta(\mathbf{x}_t, t)_i - \epsilon_i\|_2 \right]$$
+
+where $N$ is the number of residues and the expectation is over uniformly sampled timesteps $t \sim \mathcal{U}(1, T)$, data samples $\mathbf{x}_0$, and noise $\epsilon \sim \mathcal{N}(0, \mathbf{I})$.
+
+**Reverse Process (Sampling):**
+
+During generation, the model iteratively denoises from pure noise $\mathbf{x}_T \sim \mathcal{N}(0, \mathbf{I})$:
+
+$$p_\theta(\mathbf{x}_{t-1}|\mathbf{x}_t) = \mathcal{N}\left(\mathbf{x}_{t-1}; \frac{1}{\sqrt{\alpha_t}}\left(\mathbf{x}_t - \frac{1-\alpha_t}{\sqrt{1-\bar{\alpha}_t}}\epsilon_\theta(\mathbf{x}_t, t)\right), \sigma_t^2\mathbf{I}\right)$$
+
+---
+
+#### Running Training
+
 To train a new model from scratch.
 
 ```bash
@@ -62,6 +92,8 @@ python genie/train.py \
 Configuration files define model hyperparameters and training settings. See `genie/config.py` for details.
 
 **Flash-IPA Optimization:**
+
+This implementation includes an **integrated version of Flash-IPA** that has been modified to support PyTorch 2.9+. The flash_ipa module is bundled directly in `genie/flash_ipa/`, so you don't need to install it separately.
 
 This implementation includes two Flash-IPA modes:
 
@@ -96,6 +128,41 @@ This mode provides significant memory savings by:
 | Pair Embeddings Memory | O(L²) | O(L) |
 | Triangular Attention | ✅ Enabled | ❌ Disabled |
 | Suitable for | Short sequences (<512) | Long sequences (512+) |
+
+**Flash Attention 3 Support (Hopper GPUs ONLY):**
+
+For NVIDIA Hopper GPUs (**ONLY** H100, H800, etc., compute capability **9.0**), this implementation supports **Flash Attention 3** which provides additional performance improvements over Flash Attention 2:
+
+- Better memory efficiency through optimized kernel design
+- Improved compute utilization via TMA (Tensor Memory Accelerator)
+- Enhanced throughput for large head dimensions
+
+To enable FA3 on Hopper GPUs:
+
+1. Install Flash Attention 3:
+```bash
+# From the project root
+cd packages/flash-attention/hopper
+pip install .
+```
+
+2. FA3 is automatically used when:
+   - Running on **Hopper GPU (SM90 ONLY)**
+   - `flash_attn_3` package is installed and compiled
+   - `useFlashAttn3` is True (default)
+
+**Important Limitations:**
+- FA3 does **NOT** support Blackwell architecture (RTX 5090, etc., SM120)
+- FA3 does **NOT** support Ada Lovelace architecture (RTX 4090, etc., SM89)
+- On non-Hopper GPUs, the system automatically falls back to FA2
+
+Configuration option:
+```
+useFlashAttn3 True   # Enable FA3 on Hopper GPUs (default: True)
+useFlashAttn3 False  # Force FA2 even on Hopper GPUs
+```
+
+Note: On non-Hopper GPUs, Flash Attention 2 is automatically used regardless of this setting.
 | Model Parameters | ~6.4M | ~3.1M |
 
 **Configuration Parameters for Flash Mode:**
@@ -130,6 +197,40 @@ where $z^{(1)}, z^{(2)} \in \mathbb{R}^{L \times r \times C_z/r}$, and $r$ is th
 | Long sequences (>512) | 1-2 | Prioritize memory savings |
 | Memory constrained | 1 | Minimum memory footprint |
 
+> ⚠️ **Important: Flash Attention headdim Limitation**
+>
+> Flash Attention 2 has a hard limit of **headdim ≤ 256** in its CUDA kernels. The effective head dimension (`headdim_eff`) in Flash-IPA is calculated as:
+>
+> $$\text{headdim\_eff} = \max\left(c_{\text{hidden}} + 5 \cdot n_{\text{qk\_point}} + r \cdot n_{\text{head}}, \quad c_{\text{hidden}} + 3 \cdot n_{\text{v\_point}} + r \cdot \frac{c_z}{4}\right)$$
+>
+> **Parameter Definitions:**
+> - $c_{\text{hidden}}$: IPA hidden dimension (`ipaHiddenDimension`), hidden channels per attention head
+> - $n_{\text{qk\_point}}$: Query/Key 3D points (`ipaNumQkPoints`), used for SE(3)-equivariant attention weights
+> - $n_{\text{v\_point}}$: Value 3D points (`ipaNumVPoints`), used for aggregating geometric information
+> - $n_{\text{head}}$: Number of attention heads (`ipaNumHeads`)
+> - $c_z$: Pair feature dimension (`pairFeatureDimension`), channel dimension of pair embeddings
+> - $r$: `zFactorRank`, rank of the low-rank factorization for edge embeddings
+>
+> **Formula Explanation:**
+> - First term $c_{\text{hidden}} + 5 \cdot n_{\text{qk\_point}} + r \cdot n_{\text{head}}$: Effective Q/K dimension (scalar features + 5 point coordinate components + bias factors)
+> - Second term $c_{\text{hidden}} + 3 \cdot n_{\text{v\_point}} + r \cdot c_z/4$: Effective V dimension (scalar features + 3D point coordinates + downsampled edge features)
+> - The maximum of both terms determines the headdim required for Flash Attention
+>
+> With default IPA parameters ($c_{\text{hidden}}=16$, $n_{\text{qk\_point}}=4$, $n_{\text{v\_point}}=8$, $n_{\text{head}}=12$, $c_z=128$):
+>
+> | zFactorRank | Formula 1 (Q/K) | Formula 2 (V) | headdim_eff | Status |
+> |-------------|-----------------|---------------|-------------|--------|
+> | 1 | 16+20+12=48 | 16+24+32=72 | **72** | ✅ Works |
+> | 2 | 16+20+24=60 | 16+24+64=104 | **104** | ✅ Works |
+> | 4 | 16+20+48=84 | 16+24+128=168 | **168** | ✅ Works |
+> | 8 | 16+20+96=132 | 16+24+256=296 | **296** | ❌ Exceeds limit |
+>
+> **Conclusion:** With default IPA parameters, `zFactorRank` can be set to **1-7** (headdim_eff ≤ 256). When `zFactorRank ≥ 8`, it exceeds the limit and falls back to standard IPA (requiring $O(L^2)$ memory).
+>
+> **Note:** If you modify other IPA parameters (e.g., increase `ipaHiddenDimension` or `ipaNumVPoints`), you need to recalculate headdim_eff to ensure it doesn't exceed 256.
+>
+> This is a fundamental hardware constraint of Flash Attention 2. Flash Attention 3 (Hopper architecture) also has the same 256 limit and additionally requires H100 GPUs (sm90). Consumer GPUs like RTX 4090/5090 cannot use FA3.
+
 #### `kNeighbors` - Number of Nearest Neighbors
 
 **Principle:** Flash IPA uses a **sparse attention** strategy. For each residue $i$, the model only computes attention weights with its $k$ spatially nearest neighbors, instead of full all-to-all attention.
@@ -153,10 +254,11 @@ where $z^{(1)}, z^{(2)} \in \mathbb{R}^{L \times r \times C_z/r}$, and $r$ is th
 
 | Configuration | `zFactorRank` | `kNeighbors` | `maximumNumResidues` | GPU Memory |
 |---------------|---------------|--------------|----------------------|------------|
-| **High-accuracy short** | 4 | 16 | 128 | ≥16GB |
 | **Standard medium** | 2 | 10 | 256 | ≥24GB |
 | **Memory-efficient long** | 2 | 8 | 512 | ≥32GB |
 | **Very long sequences** | 1 | 6 | 1024 | ≥48GB |
+
+> ℹ️ **Note:** Due to Flash Attention's headdim ≤ 256 constraint, `zFactorRank` values above 2 are not supported for Flash-IPA. If higher expressiveness is needed, consider using standard IPA mode (without Flash) and shorter sequences.
 
 **Example Configuration (256 residues, 32GB GPU):**
 ```
@@ -164,14 +266,6 @@ useFlashMode True
 zFactorRank 2
 kNeighbors 10
 maximumNumResidues 256
-```
-
-**Example Configuration (128 residues, prioritize accuracy):**
-```
-useFlashMode True
-zFactorRank 4
-kNeighbors 16
-maximumNumResidues 128
 ```
 
 ---
@@ -671,7 +765,7 @@ This project is built upon several excellent open-source projects and academic r
 
 ![Optimization Comparison](Training_process_parameters/optimization_comparison.png)
 
-We compared the training process parameters between the original implementation and our optimized version (files located in `Training_process_parameters/`).We provide the models from this reproduction and optimized training in the [release](.release).
+We compared the training process parameters between the original implementation, our optimized version, and the full Flash mode (files located in `Training_process_parameters/`). We provide the models from this reproduction and optimized training in the [release](.release).
 
 
 **Hardware Configuration:**
@@ -681,13 +775,85 @@ We compared the training process parameters between the original implementation 
 
 **Comparison Summary:**
 
-| Metric | Original Work | This Work (Optimized) | Improvement |
-| :--- | :--- | :--- | :--- |
-| **Training Time (500 Epochs)** | ~25.7 Hours | ~12.8 Hours | **~2.0x Speedup** |
-| **Max GPU Memory Usage** | ~29.53 GB | ~25.92 GB | **~12% Reduction** |
-| **Training Loss (Final Epoch)** | ~0.758 | ~0.771 | Comparable |
+| Metric | Original Work | This Work (Optimized) | Full Flash Mode | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| **Training Time (500 Epochs)** | ~25.7 Hours | ~12.8 Hours | ~8.2 Hours | **3.1x Speedup** (Flash vs Original) |
+| **Max GPU Memory Usage** | ~29.53 GB | ~25.92 GB | ~1.48 GB | **95% Reduction** (Flash vs Original) |
+| **Avg GPU Utilization** | ~87.0% | ~87.7% | ~14.2% | Flash mode is memory-bound |
+| **Training Loss (Final Epoch)** | ~0.758 | ~0.771 | ~0.822 | Tradeoff for memory efficiency |
 
-The optimization reduced training time by half and GPU memory usage by approximately 12%. Analysis of step-wise loss (smoothed) confirms that the slight difference in final epoch loss is due to stochastic fluctuations, and both models exhibit identical convergence behavior.
+The standard optimization reduced training time by half and GPU memory usage by approximately 12%. The full Flash mode provides dramatic memory savings (95% reduction) at the cost of slightly higher final loss, making it ideal for memory-constrained environments or very long sequences.
+
+### Training Configurations
+
+<details>
+<summary><b>Original Work Configuration</b></summary>
+
+```
+name final_v1_background_model
+numEpoches 500
+batchSize 8
+maximumNumResidues 128
+dataDirectory data
+datasetNames scope
+templateType v1
+numPairTransformLayers 8
+includeTriangularAttention True
+logEverySteps 50
+checkpointEveryEpoches 50
+learningRate 2e-4
+```
+
+</details>
+
+<details>
+<summary><b>This Work (Optimized) Configuration</b></summary>
+
+```
+name final_final-v0
+numEpoches 500
+batchSize 8
+maximumNumResidues 128
+dataDirectory data
+datasetNames scope
+templateType v1
+numPairTransformLayers 8
+includeTriangularAttention True
+logEverySteps 50
+checkpointEveryEpoches 50
+learningRate 2e-4
+useFlashIPA True
+numWorkers 16
+useGradientCheckpointing False
+```
+
+</details>
+
+<details>
+<summary><b>Full Flash Mode Configuration</b></summary>
+
+```
+name onFlashIPA_v0
+numEpoches 500
+batchSize 8
+maximumNumResidues 128
+dataDirectory data
+datasetNames scope
+templateType v1
+numPairTransformLayers 8
+includeTriangularAttention True
+logEverySteps 50
+checkpointEveryEpoches 50
+learningRate 2e-4
+useFlashIPA True
+useFlashMode True
+numWorkers 16
+useGradientCheckpointing False
+zFactorRank 2
+kNeighbors 10
+```
+
+</details>
 
 ### Generative Quality Comparison
 

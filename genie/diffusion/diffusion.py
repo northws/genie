@@ -37,14 +37,15 @@ class Diffusion(LightningModule, ABC):
 			# Extract only the parameters FlashDenoiser needs from config.model
 			# (avoid duplicating max_n_res which is already in config.model)
 			model_params = {k: v for k, v in self.config.model.items() 
-			               if k not in ['max_n_res', 'use_flash_ipa', 'use_grad_checkpoint', 'z_factor_rank', 'k_neighbors']}
+			               if k not in ['max_n_res', 'use_flash_ipa', 'use_grad_checkpoint', 'z_factor_rank', 'k_neighbors', 'use_flash_attn_3']}
 			self.model = FlashDenoiser(
 				**model_params,
 				n_timestep=self.config.diffusion['n_timestep'],
 				max_n_res=max_n_res,
 				z_factor_rank=config.model.get('z_factor_rank', 2),
 				k_neighbors=config.model.get('k_neighbors', 10),
-				use_grad_checkpoint=config.training.get('use_grad_checkpoint', False)
+				use_grad_checkpoint=config.training.get('use_grad_checkpoint', False),
+				use_flash_attn_3=config.model.get('use_flash_attn_3', True)
 			)
 		else:
 			# Use standard Denoiser

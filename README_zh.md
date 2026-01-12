@@ -42,6 +42,36 @@ Genie 是一个基于扩散模型的蛋白质从头设计工具，通过对定�
 
 ### 1. 训练 (Training)
 
+#### 训练目标
+
+Genie 使用**去噪扩散概率模型 (DDPM)** 框架，遵循 [Lin & AlQuraishi, 2023](https://arxiv.org/abs/2301.12485) 中描述的方法。模型通过预测前向扩散过程中添加的噪声来学习去噪定向残基云。
+
+**前向过程（扩散）：**
+
+给定由 C$\alpha$ 坐标 $\mathbf{x}_0$ 表示的蛋白质骨架，前向过程在 $T$ 个时间步内逐渐添加高斯噪声：
+
+$$q(\mathbf{x}_t | \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_t; \sqrt{\bar{\alpha}_t}\mathbf{x}_0, (1-\bar{\alpha}_t)\mathbf{I})$$
+
+其中 $\bar{\alpha}_t = \prod_{s=1}^{t} \alpha_s$，$\alpha_t = 1 - \beta_t$，$\beta_t$ 为噪声调度。
+
+**训练损失：**
+
+模型 $\epsilon_\theta$ 被训练来预测每个时间步添加的噪声 $\epsilon$。损失函数为预测噪声与实际噪声之间的**均方根偏差 (RMSD)**：
+
+$$\mathcal{L} = \mathbb{E}_{t, \mathbf{x}_0, \epsilon} \left[ \frac{1}{N}\sum_{i=1}^{N} \|\epsilon_\theta(\mathbf{x}_t, t)_i - \epsilon_i\|_2 \right]$$
+
+其中 $N$ 为残基数量，期望值是对均匀采样的时间步 $t \sim \mathcal{U}(1, T)$、数据样本 $\mathbf{x}_0$ 和噪声 $\epsilon \sim \mathcal{N}(0, \mathbf{I})$ 计算的。
+
+**反向过程（采样）：**
+
+在生成过程中，模型从纯噪声 $\mathbf{x}_T \sim \mathcal{N}(0, \mathbf{I})$ 开始迭代去噪：
+
+$$p_\theta(\mathbf{x}_{t-1}|\mathbf{x}_t) = \mathcal{N}\left(\mathbf{x}_{t-1}; \frac{1}{\sqrt{\alpha_t}}\left(\mathbf{x}_t - \frac{1-\alpha_t}{\sqrt{1-\bar{\alpha}_t}}\epsilon_\theta(\mathbf{x}_t, t)\right), \sigma_t^2\mathbf{I}\right)$$
+
+---
+
+#### 运行训练
+
 从头开始训练新模型。
 
 ```bash
@@ -59,6 +89,8 @@ python genie/train.py \
 - `-r, --resume`：断点续训的 checkpoint（`.ckpt`）文件路径。
 
 **Flash-IPA 优化：**
+
+本实现包含一个**集成版本的 Flash-IPA**，已修改以支持 PyTorch 2.9+。flash_ipa 模块直接打包在 `genie/flash_ipa/` 目录中，因此您无需单独安装。
 
 本实现包含两种 Flash-IPA 模式：
 
@@ -95,10 +127,46 @@ kNeighbors 10
 | 适用场景 | 短序列 (<512) | 长序列 (512+) |
 | 模型参数量 | ~6.4M | ~3.1M |
 
+**Flash Attention 3 支持（仅 Hopper GPU）：**
+
+对于 NVIDIA Hopper GPU（**仅** H100、H800 等，计算能力 **9.0**），本实现支持 **Flash Attention 3**，相比 Flash Attention 2 提供额外的性能提升：
+
+- 通过优化的内核设计提高显存效率
+- 通过 TMA（张量内存加速器）提高计算利用率
+- 增强大 head dimension 的吞吐量
+
+在 Hopper GPU 上启用 FA3：
+
+1. 安装 Flash Attention 3：
+```bash
+# 从项目根目录
+cd packages/flash-attention/hopper
+pip install .
+```
+
+2. FA3 在以下条件下自动启用：
+   - 运行在 **Hopper GPU（仅 SM90）**
+   - 已安装并编译 `flash_attn_3` 包
+   - `useFlashAttn3` 为 True（默认）
+
+**重要限制：**
+- FA3 **不支持** Blackwell 架构（RTX 5090 等，SM120）
+- FA3 **不支持** Ada Lovelace 架构（RTX 4090 等，SM89）
+- 在非 Hopper GPU 上，系统会自动使用 FA2
+
+配置选项：
+```
+useFlashAttn3 True   # 在 Hopper GPU 上启用 FA3（默认：True）
+useFlashAttn3 False  # 即使在 Hopper GPU 上也强制使用 FA2
+```
+
+注意：在非 Hopper GPU 上，无论此设置如何，都会自动使用 Flash Attention 2。
+
 **Flash 模式配置参数：**
 - `useFlashMode`：启用内存高效 Flash 模式（默认：`False`）
 - `zFactorRank`：边嵌入分解的秩（默认：`2`）
 - `kNeighbors`：距离图的最近邻数量（默认：`10`）
+- `useFlashAttn3`：在 Hopper GPU 上启用 FA3（默认：`True`）
 
 ---
 
@@ -127,6 +195,40 @@ $$z_{ij} \approx z^{(1)}_i \cdot (z^{(2)}_j)^T$$
 | 长序列 (>512) | 1-2 | 优先节省显存 |
 | 显存紧张 | 1 | 最小化显存占用 |
 
+> ⚠️ **重要：Flash Attention headdim 硬件限制**
+>
+> Flash Attention 2 的 CUDA 内核存在 **headdim ≤ 256** 的硬性限制。Flash-IPA 中的有效头维度（`headdim_eff`）计算公式为：
+>
+> $$\text{headdim\_eff} = \max\left(c_{\text{hidden}} + 5 \cdot n_{\text{qk\_point}} + r \cdot n_{\text{head}}, \quad c_{\text{hidden}} + 3 \cdot n_{\text{v\_point}} + r \cdot \frac{c_z}{4}\right)$$
+>
+> **参数含义：**
+> - $c_{\text{hidden}}$：IPA 隐藏维度（`ipaHiddenDimension`），每个注意力头的隐藏通道数
+> - $n_{\text{qk\_point}}$：Query/Key 3D 点数（`ipaNumQkPoints`），用于计算 SE(3) 等变注意力权重
+> - $n_{\text{v\_point}}$：Value 3D 点数（`ipaNumVPoints`），用于聚合几何信息
+> - $n_{\text{head}}$：注意力头数（`ipaNumHeads`）
+> - $c_z$：配对特征维度（`pairFeatureDimension`），即 pair embedding 的通道数
+> - $r$：`zFactorRank`，边嵌入低秩分解的秩
+>
+> **公式解释：**
+> - 第一项 $c_{\text{hidden}} + 5 \cdot n_{\text{qk\_point}} + r \cdot n_{\text{head}}$：Query/Key 的有效维度（包含标量特征、5 个点坐标分量、偏置因子）
+> - 第二项 $c_{\text{hidden}} + 3 \cdot n_{\text{v\_point}} + r \cdot c_z/4$：Value 的有效维度（包含标量特征、3D 点坐标、下采样的边特征）
+> - 取两者最大值作为 Flash Attention 需要的 headdim
+>
+> 使用默认 IPA 参数（$c_{\text{hidden}}=16$, $n_{\text{qk\_point}}=4$, $n_{\text{v\_point}}=8$, $n_{\text{head}}=12$, $c_z=128$）时：
+>
+> | zFactorRank | 公式1 (Q/K) | 公式2 (V) | headdim_eff | 状态 |
+> |-------------|-------------|-----------|-------------|------|
+> | 1 | 16+20+12=48 | 16+24+32=72 | **72** | ✅ 正常 |
+> | 2 | 16+20+24=60 | 16+24+64=104 | **104** | ✅ 正常 |
+> | 4 | 16+20+48=84 | 16+24+128=168 | **168** | ✅ 正常 |
+> | 8 | 16+20+96=132 | 16+24+256=296 | **296** | ❌ 超出限制 |
+>
+> **结论：** 使用默认 IPA 参数时，`zFactorRank` 可以设置为 **1-7**（headdim_eff ≤ 256）。当 `zFactorRank ≥ 8` 时会超出限制，回退到标准 IPA（需要 $O(L^2)$ 显存）。
+>
+> **注意：** 如果修改了其他 IPA 参数（如增大 `ipaHiddenDimension` 或 `ipaNumVPoints`），需要重新计算 headdim_eff 以确保不超过 256。
+>
+> 这是 Flash Attention 2 的硬件级限制。Flash Attention 3（Hopper 架构）同样存在 256 的限制，且仅支持 H100 GPU（sm90）。消费级显卡（如 RTX 4090/5090）无法使用 FA3。
+
 #### `kNeighbors` - 最近邻数量
 
 **原理：** Flash IPA 使用**稀疏注意力**策略。对于每个残基 $i$，模型仅计算其与空间中最近的 $k$ 个邻居的注意力权重，而非全连接（All-to-All）注意力。
@@ -150,10 +252,11 @@ $$z_{ij} \approx z^{(1)}_i \cdot (z^{(2)}_j)^T$$
 
 | 配置名称 | `zFactorRank` | `kNeighbors` | `maximumNumResidues` | GPU 显存 |
 |----------|---------------|--------------|----------------------|----------|
-| **高精度短序列** | 4 | 16 | 128 | ≥16GB |
 | **标准中等序列** | 2 | 10 | 256 | ≥24GB |
 | **长序列省显存** | 2 | 8 | 512 | ≥32GB |
 | **超长序列** | 1 | 6 | 1024 | ≥48GB |
+
+> ℹ️ **注意：** 由于 Flash Attention 的 headdim ≤ 256 硬件限制，Flash-IPA 不支持 `zFactorRank > 2`。如果需要更高的表达能力，请考虑使用标准 IPA 模式（不启用 Flash）并缩短序列长度。
 
 **示例配置（256 残基，32GB 显存）：**
 ```
@@ -161,14 +264,6 @@ useFlashMode True
 zFactorRank 2
 kNeighbors 10
 maximumNumResidues 256
-```
-
-**示例配置（128 残基，追求精度）：**
-```
-useFlashMode True
-zFactorRank 4
-kNeighbors 16
-maximumNumResidues 128
 ```
 
 ---
@@ -670,7 +765,7 @@ python evaluations/plot.py -i runs/.../evaluations -p mds -o outputs/plots
 
 ![优化对比](Training_process_parameters/optimization_comparison.png)
 
-我们对比了原始实现与本优化版本的训练过程参数（数据位于 `Training_process_parameters/` 文件夹中）。我们在[release](.release)中提供本次复现和优化训练得到的模型
+我们对比了原始实现、本优化版本以及完整 Flash 模式的训练过程参数（数据位于 `Training_process_parameters/` 文件夹中）。我们在[release](.release)中提供本次复现和优化训练得到的模型。
 
 **硬件配置:**
 *   **GPU:** RTX 5090 (32GB) * 1
@@ -679,13 +774,85 @@ python evaluations/plot.py -i runs/.../evaluations -p mds -o outputs/plots
 
 **对比总结：**
 
-| 指标 | 原始工作 | 本工作 (优化后) | 提升 |
-| :--- | :--- | :--- | :--- |
-| **训练时长 (500 Epochs)** | ~25.7 小时 | ~12.8 小时 | **~2.0倍 加速** |
-| **最大 GPU 显存占用** | ~29.53 GB | ~25.92 GB | **降低约 12%** |
-| **训练 Loss (最终 Epoch)** | ~0.758 | ~0.771 | 基本持平 |
+| 指标 | 原始工作 | 本工作 (优化后) | 完整 Flash 模式 | 备注 |
+| :--- | :--- | :--- | :--- | :--- |
+| **训练时长 (500 Epochs)** | ~25.7 小时 | ~12.8 小时 | ~8.2 小时 | **3.1倍加速** (Flash vs 原始) |
+| **最大 GPU 显存占用** | ~29.53 GB | ~25.92 GB | ~1.48 GB | **降低 95%** (Flash vs 原始) |
+| **平均 GPU 利用率** | ~87.0% | ~87.7% | ~14.2% | Flash 模式受内存带宽限制 |
+| **训练 Loss (最终 Epoch)** | ~0.758 | ~0.771 | ~0.822 | 内存效率与精度的权衡 |
 
-优化后，训练速度提升了约 2 倍，同时显存占用降低了约 12%。对 Step Loss (平滑后) 的分析表明，最终 Epoch Loss 的微小差异源于随机波动，两者的收敛趋势在实际训练中表现一致。
+标准优化将训练速度提升了约 2 倍，同时显存占用降低了约 12%。完整 Flash 模式提供了显著的显存节省（降低 95%），但以略高的最终 Loss 为代价，非常适合显存受限的环境或超长序列的训练。
+
+### 训练配置
+
+<details>
+<summary><b>原始工作配置 (Original Work)</b></summary>
+
+```
+name final_v1_background_model
+numEpoches 500
+batchSize 8
+maximumNumResidues 128
+dataDirectory data
+datasetNames scope
+templateType v1
+numPairTransformLayers 8
+includeTriangularAttention True
+logEverySteps 50
+checkpointEveryEpoches 50
+learningRate 2e-4
+```
+
+</details>
+
+<details>
+<summary><b>本工作配置 (This Work - Optimized)</b></summary>
+
+```
+name final_final-v0
+numEpoches 500
+batchSize 8
+maximumNumResidues 128
+dataDirectory data
+datasetNames scope
+templateType v1
+numPairTransformLayers 8
+includeTriangularAttention True
+logEverySteps 50
+checkpointEveryEpoches 50
+learningRate 2e-4
+useFlashIPA True
+numWorkers 16
+useGradientCheckpointing False
+```
+
+</details>
+
+<details>
+<summary><b>完整 Flash 模式配置 (Full Flash Mode)</b></summary>
+
+```
+name onFlashIPA_v0
+numEpoches 500
+batchSize 8
+maximumNumResidues 128
+dataDirectory data
+datasetNames scope
+templateType v1
+numPairTransformLayers 8
+includeTriangularAttention True
+logEverySteps 50
+checkpointEveryEpoches 50
+learningRate 2e-4
+useFlashIPA True
+useFlashMode True
+numWorkers 16
+useGradientCheckpointing False
+zFactorRank 2
+kNeighbors 10
+```
+
+</details>
 
 ### 生成质量对比 (Generative Quality Comparison)
 

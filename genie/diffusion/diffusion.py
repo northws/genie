@@ -118,8 +118,11 @@ class Diffusion(LightningModule, ABC):
 			)
 		else:
 			# Use standard Denoiser
+			# Filter out Flash-specific parameters that standard Denoiser doesn't accept
+			model_params = {k: v for k, v in self.config.model.items() 
+			               if k not in ['z_factor_rank', 'k_neighbors', 'use_flash_attn_3']}
 			self.model = Denoiser(
-				**self.config.model,
+				**model_params,
 				n_timestep=self.config.diffusion['n_timestep']
 			)
 

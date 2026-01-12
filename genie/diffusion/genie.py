@@ -115,12 +115,18 @@ class Genie(Diffusion):
 		)
 
 		# Add mHC regularization if enabled
-		use_mhc_loss = getattr(self.config.training, 'use_mhc_loss', False) if hasattr(self.config, 'training') else False
-		if not use_mhc_loss:
-			use_mhc_loss = self.config.training.get('use_mhc_loss', False) if isinstance(self.config.training, dict) else False
+		# self.config.training is a dict, so use .get() method directly
+		use_mhc_loss = False
+		mhc_weight = 0.01
+		if hasattr(self.config, 'training'):
+			if isinstance(self.config.training, dict):
+				use_mhc_loss = self.config.training.get('use_mhc_loss', False)
+				mhc_weight = self.config.training.get('mhc_loss_weight', 0.01)
+			else:
+				use_mhc_loss = getattr(self.config.training, 'use_mhc_loss', False)
+				mhc_weight = getattr(self.config.training, 'mhc_loss_weight', 0.01)
 		
 		if use_mhc_loss and HAS_MHC_LOSS:
-			mhc_weight = self.config.training.get('mhc_loss_weight', 0.01) if isinstance(self.config.training, dict) else 0.01
 			mhc_reg = compute_mhc_regularization(
 				noise_pred_trans,
 				tnoise.trans,

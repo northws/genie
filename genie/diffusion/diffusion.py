@@ -134,8 +134,62 @@ class Diffusion(LightningModule, ABC):
 		# Optimization: Use Fused AdamW if available on GPU
 		# Note: Gradient Clipping must be disabled in Trainer for this to work
 		use_fused = torch.cuda.is_available()
-		return AdamW(
+		
+		# Large batch training: Scale learning rate
+		# Linear scaling rule: lr_new = lr_base * (batch_size / base_batch_size)
+		base_lr = self.config.optimization['lr']
+		base_batch_size = self.config.optimization.get('base_batch_size', 8)
+		actual_batch_size = self.config.training['batch_size']
+		lr_scale = self.config.training.get('lr_scale_factor', 1.0)
+		
+		# Apply square root scaling (more stable than linear for large batches)
+		if lr_scale == 1.0 and actual_batch_size > base_batch_size:
+			lr_scale = (actual_batch_size / base_batch_size) ** 0.5
+			print(f"[Large Batch] Auto LR scaling: {base_lr:.2e} -> {base_lr * lr_scale:.2e} (sqrt rule)")
+		
+		scaled_lr = base_lr * lr_scale
+		
+		optimizer = AdamW(
 			self.model.parameters(),
-			lr=self.config.optimization['lr'],
+			lr=scaled_lr,
 			fused=use_fused
 		)
+		
+		# Add warmup scheduler for large batch training
+		warmup_epochs = self.config.training.get('warmup_epochs', 0)
+		if warmup_epochs > 0:
+			print(f"[Large Batch] Using {warmup_epochs} warmup epochs")
+			from torch.optim.lr_scheduler import LinearLR, SequentialLR, CosineAnnealingLR
+			
+			# Warmup from 10% to 100% of scaled_lr
+			warmup_scheduler = LinearLR(
+				optimizer, 
+				start_factor=0.1, 
+				end_factor=1.0, 
+				total_iters=warmup_epochs
+			)
+			
+			# Optional: Cosine decay after warmup
+			total_epochs = self.config.training['n_epoch']
+			cosine_scheduler = CosineAnnealingLR(
+				optimizer,
+				T_max=total_epochs - warmup_epochs,
+				eta_min=base_lr * 0.01  # Decay to 1% of base LR
+			)
+			
+			scheduler = SequentialLR(
+				optimizer,
+				schedulers=[warmup_scheduler, cosine_scheduler],
+				milestones=[warmup_epochs]
+			)
+			
+			return {
+				'optimizer': optimizer,
+				'lr_scheduler': {
+					'scheduler': scheduler,
+					'interval': 'epoch',
+					'frequency': 1
+				}
+			}
+		
+		return optimizer

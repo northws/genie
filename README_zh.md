@@ -162,32 +162,60 @@ useFlashAttn3 False  # 即使在 Hopper GPU 上也强制使用 FA2
 
 注意：在非 Hopper GPU 上，无论此设置如何，都会自动使用 Flash Attention 2。
 
-**IPA 微批次处理（大批次训练稳定性优化）：**
+**大批次训练优化：**
 
-当使用大批次（如 512）进行训练时，IPA 层可能会因为 Flash Attention 的 `unpad/pad` 操作同时处理大量序列而出现数值不稳定。为解决此问题，我们引入了 **IPA 微批次处理**：
+当使用大批次（如 512）训练时，通常会遇到 loss 比小批次（如 8）更差的问题。这是因为大批次训练需要特殊的学习率策略。本实现提供以下优化：
+
+**1. 学习率自动缩放（平方根规则）：**
 
 ```
-ipaMicroBatchSize 16
+baseBatchSize 8        # 参考批次大小
+learningRate 2e-4      # 基准学习率
+batchSize 512          # 实际批次大小
+# 自动计算：lr_new = 2e-4 × √(512/8) = 1.6e-3
 ```
 
-这会将大批次拆分成较小的块（如每块 16 个样本）分别通过 IPA 处理，同时保持外层大批次以充分利用 GPU 并行性。
+**2. 学习率预热（Warmup）：**
 
-| 批次大小 | ipaMicroBatchSize | 效果 |
+```
+warmupEpochs 100       # 预热 epoch 数
+```
+
+前 `warmupEpochs` 个 epoch 内，学习率从 10% 线性增加到 100%，避免大批次训练初期的梯度震荡。
+
+**3. 余弦退火调度：**
+
+预热完成后，学习率按余弦曲线逐渐下降到基准值的 1%。
+
+**4. 梯度累积（可选）：**
+
+如果显存不足以支持大批次，可以使用梯度累积达到等效效果：
+
+```
+batchSize 64                  # 实际批次
+accumulateGradBatches 8       # 累积 8 步
+# 等效批次大小 = 64 × 8 = 512
+```
+
+| 配置参数 | 说明 | 推荐值 |
 | :--- | :--- | :--- |
-| ≤16 | 0（禁用） | 小批次无需启用 |
-| 64-128 | 8-16 | 平衡稳定性和速度 |
-| 256-512 | 16 | 大批次训练推荐设置 |
+| `baseBatchSize` | LR 缩放的参考批次大小 | 8 |
+| `warmupEpochs` | LR 预热 epoch 数 | 50-200 |
+| `lrScaleFactor` | 手动 LR 缩放因子（覆盖自动计算） | 1.0（自动） |
+| `accumulateGradBatches` | 梯度累积步数 | 1（不累积） |
 
-**为什么这样做有效：**
-- IPA 设计用于单个蛋白质结构内的自注意力
-- 大批次对 IPA 的优化效果不如其他层明显
-- 微批次处理保持与小批次训练相似的数值行为
+**配置示例（大批次高效训练）：**
+```
+batchSize 512
+baseBatchSize 8
+learningRate 2e-4
+warmupEpochs 100
+```
 
 **Flash 模式配置参数：**
 - `useFlashMode`：启用内存高效 Flash 模式（默认：`False`）
 - `zFactorRank`：边嵌入分解的秩（默认：`2`）
 - `kNeighbors`：距离图的最近邻数量（默认：`10`）
-- `ipaMicroBatchSize`：IPA 微批次大小，用于大批次训练稳定性（默认：`0`，禁用）
 - `useFlashAttn3`：在 Hopper GPU 上启用 FA3（默认：`True`）
 
 ---

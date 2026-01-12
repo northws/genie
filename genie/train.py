@@ -83,6 +83,13 @@ def main(args):
         ddp_strategy = 'ddp'
 
     # trainer
+    # Large batch training: gradient accumulation
+    accumulate_grad_batches = config.training.get('accumulate_grad_batches', 1)
+    if accumulate_grad_batches > 1:
+        effective_batch = config.training['batch_size'] * accumulate_grad_batches * len(gpus) if isinstance(gpus, list) else config.training['batch_size'] * accumulate_grad_batches
+        print(f"[Large Batch] Gradient accumulation enabled: {accumulate_grad_batches} steps")
+        print(f"[Large Batch] Effective batch size: {effective_batch}")
+    
     trainer = Trainer(
         accelerator=accelerator,  # [Updated] Explicit accelerator definition
         devices=gpus,  # [Updated] Replaces the old 'gpus' arg
@@ -98,6 +105,9 @@ def main(args):
         # [Stability] Gradient Clipping disabled to allow Fused AdamW
         # gradient_clip_val=1.0,
         gradient_clip_val=None,
+
+        # [Large Batch] Gradient accumulation for effective larger batch size
+        accumulate_grad_batches=accumulate_grad_batches,
 
         deterministic=False,  # [Optimization] Changed to False for speed unless reproducibility is strictly required
         enable_progress_bar=True,  # Changed to True usually for UX, set False if running in strict pipeline

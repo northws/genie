@@ -82,10 +82,15 @@ class Config:
 			'checkpoint_every_n_epoch': int(config.get('checkpointEveryEpoches', 500)),
 			'use_grad_checkpoint':          config.get('useGradientCheckpointing', False),
 			'use_flash_mode':               config.get('useFlashMode',             False),  # Memory-efficient Flash IPA mode
+			# Large batch training optimizations
+			'accumulate_grad_batches':  int(config.get('accumulateGradBatches',  1)),      # Gradient accumulation steps
+			'warmup_epochs':            int(config.get('warmupEpochs',           0)),      # LR warmup epochs
+			'lr_scale_factor':        float(config.get('lrScaleFactor',          1.0)),    # LR scaling for large batch
 		}
 
 		self.optimization = {
-			'lr': float(config.get('learningRate', 1e-4))
+			'lr': float(config.get('learningRate', 1e-4)),
+			'base_batch_size':      int(config.get('baseBatchSize',           8)),      # Reference batch size for LR scaling
 		}
 
 	def _load_config(self, filename):

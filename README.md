@@ -165,32 +165,61 @@ useFlashAttn3 False  # Force FA2 even on Hopper GPUs
 Note: On non-Hopper GPUs, Flash Attention 2 is automatically used regardless of this setting.
 | Model Parameters | ~6.4M | ~3.1M |
 
-**IPA Micro-Batching for Large Batch Training:**
+**Large Batch Training Optimization:**
 
-When training with large batch sizes (e.g., 512), the IPA layer may experience numerical instability due to how Flash Attention's `unpad/pad` operations process many sequences together. To address this, we introduce **IPA Micro-Batching**:
+When training with large batch sizes (e.g., 512), you may notice worse loss compared to small batches (e.g., 8). This is because large batch training requires special learning rate strategies. This implementation provides the following optimizations:
+
+**1. Automatic Learning Rate Scaling (Square Root Rule):**
 
 ```
-ipaMicroBatchSize 16
+baseBatchSize 8        # Reference batch size
+learningRate 2e-4      # Base learning rate
+batchSize 512          # Actual batch size
+# Auto-computed: lr_new = 2e-4 × √(512/8) = 1.6e-3
 ```
 
-This splits the large batch into smaller chunks (e.g., 16 samples each) for IPA processing while keeping the outer batch size large for GPU efficiency.
+**2. Learning Rate Warmup:**
 
-| Batch Size | ipaMicroBatchSize | Effect |
+```
+warmupEpochs 100       # Number of warmup epochs
+```
+
+During the first `warmupEpochs` epochs, the learning rate linearly increases from 10% to 100%, avoiding gradient oscillations at the start of large batch training.
+
+**3. Cosine Annealing Schedule:**
+
+After warmup, the learning rate gradually decreases following a cosine curve to 1% of the base value.
+
+**4. Gradient Accumulation (Optional):**
+
+If GPU memory is insufficient for large batches, use gradient accumulation to achieve equivalent effect:
+
+```
+batchSize 64                  # Actual batch size
+accumulateGradBatches 8       # Accumulate 8 steps
+# Effective batch size = 64 × 8 = 512
+```
+
+| Parameter | Description | Recommended |
 | :--- | :--- | :--- |
-| ≤16 | 0 (disabled) | Not needed for small batches |
-| 64-128 | 8-16 | Balanced stability and speed |
-| 256-512 | 16 | Recommended for large batch training |
+| `baseBatchSize` | Reference batch size for LR scaling | 8 |
+| `warmupEpochs` | Number of LR warmup epochs | 50-200 |
+| `lrScaleFactor` | Manual LR scale factor (overrides auto) | 1.0 (auto) |
+| `accumulateGradBatches` | Gradient accumulation steps | 1 (disabled) |
 
-**Why this helps:**
-- IPA is designed for self-attention within individual protein structures
-- Large batch sizes don't benefit IPA the same way they benefit other layers
-- Micro-batching maintains numerical behavior similar to small batch training
+**Example Configuration (Efficient Large Batch Training):**
+```
+batchSize 512
+baseBatchSize 8
+learningRate 2e-4
+warmupEpochs 100
+```
 
 **Configuration Parameters for Flash Mode:**
 - `useFlashMode`: Enable memory-efficient Flash mode (default: `False`)
 - `zFactorRank`: Rank for edge embedding factorization (default: `2`)
 - `kNeighbors`: Number of nearest neighbors for distogram (default: `10`)
-- `ipaMicroBatchSize`: Micro-batch size for IPA stability (default: `0`, disabled)
+- `useFlashAttn3`: Enable FA3 on Hopper GPUs (default: `True`)
 
 ---
 

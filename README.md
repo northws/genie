@@ -51,7 +51,7 @@ Genie uses a **denoising diffusion probabilistic model (DDPM)** framework, follo
 
 **Forward Process (Diffusion):**
 
-Given a protein backbone represented by C$\alpha$ coordinates $\mathbf{x}_0$, the forward process gradually adds Gaussian noise over $T$ timesteps:
+Given a protein backbone represented by Cα coordinates $\mathbf{x}_0$, the forward process gradually adds Gaussian noise over $T$ timesteps:
 
 $$q(\mathbf{x}_t | \mathbf{x}_0) = \mathcal{N}(\mathbf{x}_t; \sqrt{\bar{\alpha}_t}\mathbf{x}_0, (1-\bar{\alpha}_t)\mathbf{I})$$
 
@@ -343,11 +343,11 @@ Input (noisy frames) → Single Feature Net → Pair Feature Net → Pair Transf
 
 | Parameter | Config Key | Default | Description |
 |-----------|------------|---------|-------------|
-| Single Feature Dimension | `singleFeatureDimension` | 128 | Channel dimension for per-residue representations ($c_s$) |
-| Pair Feature Dimension | `pairFeatureDimension` | 128 | Channel dimension for pairwise representations ($c_p$) |
+| Single Feature Dimension | `singleFeatureDimension` | 128 | Channel dimension for per-residue representations |
+| Pair Feature Dimension | `pairFeatureDimension` | 128 | Channel dimension for pairwise representations |
 
 **Selection Guide:**
-- These dimensions should be equal ($c_s = c_p$) for optimal information flow
+- These dimensions should be equal for optimal information flow
 - **Standard training**: 128 (paper default, balances expressiveness and efficiency)
 - **High-capacity models**: 256 (more expressive but ~4x memory for pair features)
 - **Memory-constrained**: 64 (reduced capacity but significant memory savings)

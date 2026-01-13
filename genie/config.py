@@ -85,6 +85,23 @@ class Config:
 			'use_mhc_mode':                 config.get('useMHCMode',               False),  # mHC (Manifold-Constrained Hyper-Connections) mode
 			'use_mhc_loss':                 config.get('useMHCLoss',               False),  # mHC as loss regularization only (no arch change)
 			'mhc_loss_weight':        float(config.get('mhcLossWeight',           0.01)),   # Weight for mHC loss regularization
+			'use_adv_mhc_loss':             config.get('useAdvMHCLoss',            False),  # Advanced mHC loss with all regularization functions
+			# Advanced mHC loss hyperparameters (only used when useAdvMHCLoss=True)
+			'adv_mhc_balance_weight':   float(config.get('advMHCBalanceWeight',    0.1)),   # Weight for residual balance loss
+			'adv_mhc_norm_weight':      float(config.get('advMHCNormWeight',       0.1)),   # Weight for gradient norm preservation loss
+			'adv_mhc_stability_weight': float(config.get('advMHCStabilityWeight',  0.05)),  # Weight for representation stability loss
+			'adv_mhc_flow_weight':      float(config.get('advMHCFlowWeight',       0.01)),  # Weight for gradient flow loss
+			'adv_mhc_ds_weight':        float(config.get('advMHCDoublyStochasticWeight', 0.0)),  # Weight for doubly stochastic penalty (0 to disable)
+			'adv_mhc_target_ratio':     float(config.get('advMHCTargetRatio',      0.5)),   # Target residual ratio for balance loss
+			# Long sequence training parameters (for Flash mode + AdvMHCLoss)
+			'adv_mhc_long_seq_mode':          config.get('advMHCLongSeqMode',      False),  # Enable long sequence gradient stabilization
+			'adv_mhc_adaptive_norm_weight': float(config.get('advMHCAdaptiveNormWeight', 0.05)),  # Sequence-length adaptive norm loss
+			'adv_mhc_magnitude_clip_weight': float(config.get('advMHCMagnitudeClipWeight', 0.02)),  # Gradient magnitude soft clipping
+			'adv_mhc_local_consistency_weight': float(config.get('advMHCLocalConsistencyWeight', 0.01)),  # Local consistency loss
+			'adv_mhc_spectral_norm_weight': float(config.get('advMHCSpectralNormWeight', 0.02)),  # Spectral norm regularization
+			'adv_mhc_base_seq_len':       int(config.get('advMHCBaseSeqLen',       128)),   # Base sequence length for adaptive scaling
+			'adv_mhc_max_magnitude':    float(config.get('advMHCMaxMagnitude',     10.0)),  # Max prediction magnitude before penalty
+			'adv_mhc_consistency_window': int(config.get('advMHCConsistencyWindow', 5)),    # Window size for local consistency
 			# Large batch training optimizations
 			'accumulate_grad_batches':  int(config.get('accumulateGradBatches',  1)),      # Gradient accumulation steps
 			'warmup_epochs':            int(config.get('warmupEpochs',           0)),      # LR warmup epochs

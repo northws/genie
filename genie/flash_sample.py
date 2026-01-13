@@ -112,7 +112,15 @@ def load_flash_model(rootdir, name, version=None, epoch=None, force_flash=False)
         print("         Some weights (PairTransformNet) will be randomly initialized.")
         print("         For best results, train a model with useFlashMode=True")
     
-    diffusion = Genie.load_from_checkpoint(ckpt_filepath, config=config, strict=False)
+    # 修复：强制将权重加载到当前可用GPU或CPU，避免因设备不匹配报错
+    import torch
+    map_location = None
+    if torch.cuda.is_available():
+        # 默认加载到cuda:0
+        map_location = lambda storage, loc: storage.cuda(0)
+    else:
+        map_location = 'cpu'
+    diffusion = Genie.load_from_checkpoint(ckpt_filepath, config=config, strict=False, map_location=map_location)
     
     # Save checkpoint information
     diffusion.rootdir = rootdir

@@ -88,7 +88,14 @@ def load_model(rootdir, name, version=None, epoch=None):
 		sys.exit(1)
 
 	print(f"Loading checkpoint from: {ckpt_filepath}")
-	diffusion = Genie.load_from_checkpoint(ckpt_filepath, config=config)
+	# 修复：强制将权重加载到当前可用GPU或CPU，避免因设备不匹配报错
+	import torch
+	map_location = None
+	if torch.cuda.is_available():
+		map_location = lambda storage, loc: storage.cuda(0)
+	else:
+		map_location = 'cpu'
+	diffusion = Genie.load_from_checkpoint(ckpt_filepath, config=config, map_location=map_location)
 
 	
 	# save checkpoint information

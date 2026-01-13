@@ -65,7 +65,9 @@ class ManifoldConstrainedHyperConnections(nn.Module):
     Args:
         c_in: Input channel dimension
         expansion_rate: Width expansion factor n (default: 4)
-        n_sinkhorn_iters: Sinkhorn-Knopp iterations (default: 20)
+        n_sinkhorn_iters: Sinkhorn-Knopp iterations during training (default: 20)
+        n_sinkhorn_iters_inference: Sinkhorn-Knopp iterations during inference (default: 5)
+                                     Fewer iterations during inference for speed since weights are already trained
         alpha_init: Initial value for gating factors (default: 0.01)
     """
     
@@ -74,13 +76,15 @@ class ManifoldConstrainedHyperConnections(nn.Module):
         c_in: int,
         expansion_rate: int = 4,
         n_sinkhorn_iters: int = 20,
+        n_sinkhorn_iters_inference: int = 5,  # Fewer iterations during inference for speed
         alpha_init: float = 0.01,
     ):
         super().__init__()
-        
+
         self.c_in = c_in
         self.n = expansion_rate
         self.n_sinkhorn_iters = n_sinkhorn_iters
+        self.n_sinkhorn_iters_inference = n_sinkhorn_iters_inference
         
         # Dimension of flattened hidden state: n * C
         c_hidden = self.n * c_in
@@ -150,7 +154,9 @@ class ManifoldConstrainedHyperConnections(nn.Module):
         H_post = 2 * torch.sigmoid(H_post_raw).unsqueeze(-2)  # [B, L, 1, n] (scale by 2 as in paper)
         
         # H_res: Sinkhorn-Knopp for doubly stochastic
-        H_res = sinkhorn_knopp(H_res_raw, n_iters=self.n_sinkhorn_iters)  # [B, L, n, n]
+        # Use fewer iterations during inference for speed (weights are already trained)
+        n_iters = self.n_sinkhorn_iters if self.training else self.n_sinkhorn_iters_inference
+        H_res = sinkhorn_knopp(H_res_raw, n_iters=n_iters)  # [B, L, n, n]
         
         return H_pre, H_post, H_res
     

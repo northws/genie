@@ -38,13 +38,15 @@ class PairManifoldConstrainedHyperConnections(nn.Module):
         c_in: int,
         expansion_rate: int = 4,
         n_sinkhorn_iters: int = 20,
+        n_sinkhorn_iters_inference: int = 5,  # Fewer iterations during inference
         alpha_init: float = 0.01,
     ):
         super().__init__()
-        
+
         self.c_in = c_in
         self.n = expansion_rate
         self.n_sinkhorn_iters = n_sinkhorn_iters
+        self.n_sinkhorn_iters_inference = n_sinkhorn_iters_inference
         
         # Dimension of flattened hidden state: n * C
         c_hidden = self.n * c_in
@@ -100,7 +102,9 @@ class PairManifoldConstrainedHyperConnections(nn.Module):
         H_post = 2 * torch.sigmoid(H_post_raw).unsqueeze(-2) # [B, L, L, 1, n]
         
         # Sinkhorn-Knopp for H_res
-        H_res = sinkhorn_knopp(H_res_raw, n_iters=self.n_sinkhorn_iters) # [B, L, L, n, n]
+        # Use fewer iterations during inference for speed
+        n_iters = self.n_sinkhorn_iters if self.training else self.n_sinkhorn_iters_inference
+        H_res = sinkhorn_knopp(H_res_raw, n_iters=n_iters) # [B, L, L, n, n]
         
         return H_pre, H_post, H_res
     
@@ -255,6 +259,22 @@ class mHCPairTransformLayer(nn.Module):
 class mHCPairTransformNet(nn.Module):
     """
     PairTransformNet with mHC (Manifold-Constrained Hyper-Connections).
+
+    MEMORY WARNING:
+    ===============
+    Pair features have dimension L² × C. With mHC expansion rate n, this becomes L² × n × C.
+    For long sequences (e.g., L=1024), this can quickly exhaust GPU memory.
+
+    Memory usage examples:
+    - L=256, C=128, n=4: ~134 MB per batch
+    - L=512, C=128, n=4: ~536 MB per batch
+    - L=1024, C=128, n=4: ~2.1 GB per batch
+
+    RECOMMENDATIONS:
+    1. Use smaller expansion rates (n=2) for pair features
+    2. Apply mHC only to critical layers, not all layers
+    3. For very long sequences (L>512), consider disabling mHC on pair features
+    4. Use gradient checkpointing to trade computation for memory
     """
 
     def __init__(self,
@@ -273,6 +293,22 @@ class mHCPairTransformNet(nn.Module):
                  use_grad_checkpoint=False
                  ):
         super(mHCPairTransformNet, self).__init__()
+
+        # Memory warning for large expansion rates on pair features
+        if mhc_expansion_rate > 2:
+            print(f"========================================================")
+            print(f"WARNING: mHCPairTransformNet Memory Usage")
+            print(f"========================================================")
+            print(f"  Expansion rate: {mhc_expansion_rate}")
+            print(f"  Pair features have dimension L² × C")
+            print(f"  With mHC, this becomes L² × {mhc_expansion_rate} × C")
+            print(f"  ")
+            print(f"  For L=512, this uses ~{0.536 * mhc_expansion_rate / 4:.1f}GB per batch")
+            print(f"  For L=1024, this uses ~{2.1 * mhc_expansion_rate / 4:.1f}GB per batch")
+            print(f"  ")
+            print(f"  RECOMMENDATION: Consider using expansion_rate=2 for")
+            print(f"                  pair features to reduce memory usage")
+            print(f"========================================================")
 
         self.layers = nn.ModuleList()
         for i in range(n_pair_transform_layer):

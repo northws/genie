@@ -295,12 +295,25 @@ class mHCFlashStructureNet(nn.Module):
             
             # Skip connection (only add after first layer)
             if b > 0 or True:  # Always apply skip
-                # s_out may be expanded [B, L, n, C] except on last layer
-                if len(s_out.shape) == 4:  # Expanded
-                    # Add skip to each expansion
-                    s_out = s_out + s_skip.unsqueeze(-2)
-                else:  # Contracted (last layer)
-                    s_out = s_out + s_skip
+                # Check the state of both s_skip and s_out
+                is_skip_expanded = (len(s_skip.shape) == 4)
+                is_out_expanded = (len(s_out.shape) == 4)
+
+                if is_out_expanded:
+                    if is_skip_expanded:
+                        # Both are [B, L, n, C], direct addition
+                        s_out = s_out + s_skip
+                    else:
+                        # s_skip is [B, L, C], needs broadcasting
+                        s_out = s_out + s_skip.unsqueeze(-2)
+                else:
+                    # s_out is contracted (only happens on last layer of last block)
+                    if is_skip_expanded:
+                        # Contract s_skip first (should rarely happen)
+                        s_out = s_out + s_skip.mean(dim=-2)
+                    else:
+                        # Both contracted [B, L, C]
+                        s_out = s_out + s_skip
             
             # Update inputs for next block
             inputs = (s_out, z_factor_1, z_factor_2, t_out, mask)

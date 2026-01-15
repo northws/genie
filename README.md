@@ -7,6 +7,8 @@ This project is a reproduction and optimization of [https://github.com/aqlaborat
 **Read this in other languages:  [中文](README_zh.md)**
 ,**For specific improvements, see[improvement detail](improvement_detail.md)**
 
+For further modifications (not fully tested), please refer to the repository [Flash_genie](https://github.com/northws/Flash_genie/)
+
 **View the demo notebook:** [genie_demo.ipynb](genie_demo.ipynb)
 ## Installation
 

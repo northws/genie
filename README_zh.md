@@ -4,6 +4,8 @@ Genie 是一个基于扩散模型的蛋白质从头设计工具，通过对定�
 
 关于具体改进见[improvement_detail](improvement_detail.md)
 
+如果要查看进一步的修改（未完成全部测试）见仓库[Flash_genie](https://github.com/northws/Flash_genie/)
+
 本项目是对 [https://github.com/aqlaboratory/genie](https://github.com/aqlaboratory/genie) 的复现及优化。
 
 ## 安装

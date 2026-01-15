@@ -2,6 +2,8 @@
 
 Genie 是一个基于扩散模型的蛋白质从头设计工具，通过对定向残基云进行等变扩散来实现。
 
+关于具体改进见[improvement_detail](improvement_detail.md)
+
 本项目是对 [https://github.com/aqlaboratory/genie](https://github.com/aqlaboratory/genie) 的复现及优化。
 
 ## 安装

@@ -131,9 +131,10 @@ dmypy.json
 
 .idea/
 .vscode/
-data/
 runs/
 genie/runs/
 genie/wandb/
 wandb/
 flash_ipa_temp/
+data/
+!genie/data/

@@ -17,7 +17,7 @@ class GenieBackend:
         self.evaluations_dir = os.path.join(self.base_dir, "evaluations")
     
     def run_training(self, config_path, gpus=None, resume_path=None, 
-                    output_callback=None, progress_callback=None):
+                    output_callback=None, progress_callback=None, stop_callback=None):
         """运行训练"""
         try:
             cmd = [sys.executable, "-m", "genie.train", "-c", config_path]
@@ -57,30 +57,12 @@ class GenieBackend:
     
     def run_sampling(self, model_type, model_path, min_length, max_length,
                     batch_size, num_batches, noise_scale, gpu, output_dir,
-                    save_trajectory=False, output_callback=None, progress_callback=None):
+                    save_trajectory=False, output_callback=None, progress_callback=None, stop_callback=None):
         """运行采样"""
         try:
-            # 解析模型路径
-            if model_type == "pretrained":
-                # 从预训练模型名称解析路径
-                model_name, epoch_str = self._parse_pretrained_model(model_path)
-                rootdir = os.path.join(self.base_dir, "weights")
-                model_version = 0
-                epoch = int(epoch_str.replace("epoch=", ""))
-            else:
-                # 自定义模型
-                model_dir = os.path.dirname(model_path)
-                model_name = os.path.basename(model_dir)
-                rootdir = os.path.dirname(model_dir)
-                model_version = 0
-                epoch = self._extract_epoch_from_ckpt(model_path)
-            
+            # 构建采样命令
             cmd = [
                 sys.executable, "-m", "genie.sample",
-                "-r", rootdir,
-                "-n", model_name,
-                "-v", str(model_version),
-                "-e", str(epoch),
                 "--batch_size", str(batch_size),
                 "--num_batches", str(num_batches),
                 "--noise_scale", str(noise_scale),
@@ -94,7 +76,26 @@ class GenieBackend:
             if save_trajectory:
                 cmd.append("--save_trajectory")
             
+            # 解析模型路径 - 直接使用ckpt文件路径
+            if model_type == "pretrained":
+                # 从预训练模型名称解析权重文件夹
+                model_name, epoch_str = self._parse_pretrained_model(model_path)
+                # 确保包含 .ckpt 后缀
+                if not epoch_str.endswith('.ckpt'):
+                    epoch_str = f"{epoch_str}.ckpt"
+                ckpt_path = os.path.join(self.base_dir, "weights", model_name, epoch_str)
+            else:
+                # 自定义模型：model_path 应该是 ckpt 文件的完整路径
+                ckpt_path = model_path
+                model_name = os.path.basename(os.path.dirname(ckpt_path))
+            
+            # 使用配置文件和检查点
+            config_path = os.path.join(self.base_dir, "weights", model_name, "configuration")
+            cmd.extend(["--ckpt", ckpt_path, "-c", config_path])
+            
             if output_callback:
+                output_callback(f"检查点路径: {ckpt_path}\n")
+                output_callback(f"配置路径: {config_path}\n")
                 output_callback(f"执行命令: {' '.join(cmd)}\n")
             
             process = subprocess.Popen(
@@ -121,7 +122,7 @@ class GenieBackend:
             return f"采样出错: {str(e)}"
     
     def run_evaluation(self, input_dir, output_dir, gpus=None,
-                      output_callback=None, progress_callback=None):
+                      output_callback=None, progress_callback=None, stop_callback=None):
         """运行评估"""
         try:
             eval_script = os.path.join(self.evaluations_dir, "pipeline", "evaluate.py")
@@ -162,7 +163,7 @@ class GenieBackend:
             return f"评估出错: {str(e)}"
     
     def run_plotting(self, plot_type, input_dir, output_dir, input_file=None,
-                    output_callback=None, progress_callback=None):
+                    output_callback=None, progress_callback=None, stop_callback=None):
         """运行绘图"""
         try:
             if plot_type in ["单个结构可视化", "轨迹可视化"]:
@@ -227,44 +228,119 @@ class GenieBackend:
             return int(epoch_str)
         return 0
     
-    def download_dataset(self, dataset_type, output_callback=None):
+    def download_dataset(self, dataset_type, output_callback=None, progress_callback=None, stop_callback=None):
         """下载数据集"""
         try:
-            if dataset_type == "SCOPE":
-                script = os.path.join(self.base_dir, "scripts", "install_dataset.sh")
-            elif dataset_type == "SwissProt":
-                script = os.path.join(self.base_dir, "scripts", "install_dataset.sh")
-            else:
-                return "未知的数据集类型"
-            
-            if not os.path.exists(script):
-                return f"数据集安装脚本不存在: {script}"
-            
             if output_callback:
-                output_callback(f"正在下载{dataset_type}数据集...\n")
+                output_callback(f"正在准备下载{dataset_type}数据集...\n")
             
-            # 在Windows上可能需要使用bash或git bash
-            process = subprocess.Popen(
-                ["bash", script],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True
-            )
+            # 创建data目录
+            data_dir = os.path.join(self.base_dir, "data")
+            os.makedirs(data_dir, exist_ok=True)
             
-            for line in iter(process.stdout.readline, ''):
-                if line:
+            # 配置SSL证书验证（禁用以解决证书问题）
+            import ssl
+            ssl_context = ssl.create_default_context()
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+            
+            if dataset_type == "SCOPE":
+                if output_callback:
+                    output_callback("下载SCOPE数据集...\n")
+                
+                # 下载序列文件
+                import urllib.request
+                seq_url = "https://scop.berkeley.edu/downloads/scopeseq-2.08/astral-scopedom-seqres-gd-sel-gs-bib-40-2.08.fa"
+                seq_file = os.path.join(data_dir, "astral-scopedom-seqres-gd-sel-gs-bib-40-2.08.fa")
+                
+                if output_callback:
+                    output_callback(f"下载序列文件: {seq_url}\n")
+                with urllib.request.urlopen(seq_url, context=ssl_context) as response:
+                    with open(seq_file, 'wb') as f:
+                        f.write(response.read())
+                
+                # 下载结构文件
+                struct_url = "https://scop.berkeley.edu/downloads/pdbstyle/pdbstyle-sel-gs-bib-40-2.08.tgz"
+                struct_file = os.path.join(data_dir, "pdbstyle-sel-gs-bib-40-2.08.tgz")
+                
+                if output_callback:
+                    output_callback(f"下载结构文件: {struct_url}\n")
+                with urllib.request.urlopen(struct_url, context=ssl_context) as response:
+                    with open(struct_file, 'wb') as f:
+                        f.write(response.read())
+                
+                # 解压
+                if output_callback:
+                    output_callback("解压文件...\n")
+                import tarfile
+                with tarfile.open(struct_file, 'r:gz') as tar:
+                    tar.extractall(data_dir)
+                
+                os.remove(struct_file)
+                
+                # 预处理
+                if output_callback:
+                    output_callback("预处理数据集...\n")
+                
+                script_path = os.path.join(self.base_dir, "scripts", "generate_scope_coords.py")
+                if os.path.exists(script_path):
+                    result = subprocess.run([sys.executable, script_path], 
+                                          capture_output=True, text=True)
                     if output_callback:
-                        output_callback(line.strip())
+                        output_callback(result.stdout)
+                
+                if output_callback:
+                    output_callback("SCOPE数据集下载完成！\n")
+                return "SCOPE数据集下载完成！"
             
-            process.wait()
-            
-            if process.returncode == 0:
-                return "数据集下载完成！"
             else:
-                return f"数据集下载失败，返回码: {process.returncode}"
+                return "暂不支持此数据集类型"
                 
         except Exception as e:
-            return f"数据集下载出错: {str(e)}"
+            error_msg = f"数据集下载出错: {str(e)}"
+            if output_callback:
+                output_callback(error_msg)
+            return error_msg
+    
+    def setup_evaluation(self, output_callback=None, progress_callback=None, stop_callback=None):
+        """设置评估环境"""
+        try:
+            if output_callback:
+                output_callback("正在设置评估环境...\n")
+            
+            # 创建packages目录
+            packages_dir = os.path.join(self.base_dir, "packages")
+            os.makedirs(packages_dir, exist_ok=True)
+            
+            # 克隆ProteinMPNN
+            proteinmpnn_dir = os.path.join(packages_dir, "ProteinMPNN")
+            if not os.path.exists(proteinmpnn_dir):
+                if output_callback:
+                    output_callback("克隆ProteinMPNN仓库...\n")
+                subprocess.run(["git", "clone", "https://github.com/dauparas/ProteinMPNN.git", proteinmpnn_dir],
+                             check=True)
+            
+            # 安装ESMFold
+            if output_callback:
+                output_callback("安装ESMFold...\n")
+            subprocess.run([sys.executable, "-m", "pip", "install", "fair-esm[esmfold]"],
+                         check=True)
+            
+            # 安装其他依赖
+            if output_callback:
+                output_callback("安装评估依赖...\n")
+            subprocess.run([sys.executable, "-m", "pip", "install", "modelcif"],
+                         check=True)
+            
+            if output_callback:
+                output_callback("评估环境设置完成！\n")
+            return "评估环境设置完成！"
+            
+        except Exception as e:
+            error_msg = f"评估环境设置失败: {str(e)}"
+            if output_callback:
+                output_callback(error_msg)
+            return error_msg
     
     def get_available_models(self):
         """获取可用的预训练模型"""

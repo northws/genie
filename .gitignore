@@ -131,7 +131,9 @@ dmypy.json
 
 .idea/
 .vscode/
+# 只忽略根目录的 data/，保留 genie/data/
 data/
+!genie/data/
 runs/
 genie/runs/
 genie/wandb/

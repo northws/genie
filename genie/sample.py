@@ -9,8 +9,24 @@ import argparse
 import numpy as np
 from tqdm import tqdm, trange
 
-from genie.utils.model_io import load_model
+from genie.config import Config
+from genie.diffusion.genie import Genie
 
+
+def load_model_from_ckpt(ckpt_path, config_path):
+	"""直接从检查点文件加载模型"""
+	config = Config(config_path)
+	diffusion = Genie.load_from_checkpoint(ckpt_path, config=config)
+	
+	# 解析模型信息
+	model_dir = os.path.dirname(os.path.dirname(ckpt_path))
+	diffusion.rootdir = model_dir
+	diffusion.name = os.path.basename(model_dir)
+	diffusion.version = 0
+	diffusion.epoch = int(os.path.basename(ckpt_path).split('epoch=')[1].split('.')[0])
+	diffusion.checkpoint = ckpt_path
+	
+	return diffusion
 
 
 def main(args):
@@ -18,8 +34,12 @@ def main(args):
 	# device
 	device = 'cuda:{}'.format(args.gpu) if args.gpu is not None else 'cpu'
 
-	# model
-	model = load_model(args.rootdir, args.model_name, args.model_version, args.model_epoch).to(device)
+	# model - 支持新的 --ckpt 和 -c 参数
+	if hasattr(args, 'ckpt') and args.ckpt:
+		model = load_model_from_ckpt(args.ckpt, args.config).to(device)
+	else:
+		# 兼容旧方式
+		model = load_model(args.rootdir, args.model_name, args.model_version, args.model_epoch).to(device)
 
 	# output directory
 	outdir = os.path.join(model.rootdir, model.name, 'version_{}'.format(model.version), 'samples')
@@ -73,9 +93,11 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-g', '--gpu', type=str, nargs='?', const='0', help='GPU device to use')
 	parser.add_argument('-r', '--rootdir', type=str, help='Root directory (default to runs)', default='runs')
-	parser.add_argument('-n', '--model_name', type=str, help='Name of Genie model', required=True)
+	parser.add_argument('-n', '--model_name', type=str, help='Name of Genie model')
 	parser.add_argument('-v', '--model_version', type=int, help='Version of Genie model')
 	parser.add_argument('-e', '--model_epoch', type=int, help='Epoch Genie model checkpointed')
+	parser.add_argument('--ckpt', type=str, help='Path to checkpoint file')
+	parser.add_argument('-c', '--config', type=str, help='Path to configuration file')
 	parser.add_argument('--batch_size', type=int, help='Batch size', default=5)
 	parser.add_argument('--num_batches', type=int, help='Number of batches', default=2)
 	parser.add_argument('--noise_scale', type=float, help='Sampling noise scale', default=0.6)
@@ -83,6 +105,10 @@ if __name__ == '__main__':
 	parser.add_argument('--max_length', type=int, help='Maximum length', default=128)
 	parser.add_argument('--save_trajectory', action='store_true', help='Save all timesteps for visualization')
 	args = parser.parse_args()
+	
+	# 验证参数
+	if not args.ckpt and not args.model_name:
+		parser.error('请提供 --ckpt 参数或 --model_name 参数')
 
 	# run
 	try:

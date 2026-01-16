@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QTabWidget, QPushButton, QLabel, QLineEdit, QTextEdit, QFileDialog,
     QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox, QProgressBar,
-    QGroupBox, QFormLayout, QMessageBox, QListWidget, QDialog, QDialogButtonBox
+    QGroupBox, QFormLayout, QMessageBox, QListWidget, QDialog, QDialogButtonBox, QListWidgetItem
 )
 from PyQt6.QtCore import QThread, pyqtSignal, Qt
 from PyQt6.QtGui import QFont, QDragEnterEvent, QDropEvent, QPixmap
@@ -73,6 +73,57 @@ class DragDropLineEdit(QLineEdit):
                 self.setText(path)
             elif os.path.isfile(path) and self.accept_files:
                 self.setText(path)
+
+
+class ImagePreviewDialog(QDialog):
+    """图片预览对话框"""
+    def __init__(self, image_path, parent=None):
+        super().__init__(parent)
+        self.image_path = image_path
+        self.init_ui()
+    
+    def init_ui(self):
+        self.setWindowTitle(f"预览: {os.path.basename(self.image_path)}")
+        self.setGeometry(100, 100, 900, 700)
+        
+        layout = QVBoxLayout()
+        
+        # 图片显示
+        pixmap = QPixmap(self.image_path)
+        if not pixmap.isNull():
+            # 缩放到适合窗口
+            pixmap = pixmap.scaled(880, 650, Qt.AspectRatioMode.KeepAspectRatio, 
+                                  Qt.TransformationMode.SmoothTransformation)
+            label = QLabel()
+            label.setPixmap(pixmap)
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(label)
+        else:
+            layout.addWidget(QLabel("无法加载图片"))
+        
+        # 按钮布局
+        btn_layout = QHBoxLayout()
+        
+        # 打开文件夹按钮
+        open_folder_btn = QPushButton("打开所在文件夹")
+        open_folder_btn.clicked.connect(self.open_folder)
+        btn_layout.addWidget(open_folder_btn)
+        
+        # 关闭按钮
+        close_btn = QPushButton("关闭")
+        close_btn.clicked.connect(self.close)
+        btn_layout.addWidget(close_btn)
+        
+        layout.addLayout(btn_layout)
+        
+        self.setLayout(layout)
+    
+    def open_folder(self):
+        """打开图片所在文件夹"""
+        folder = os.path.dirname(self.image_path)
+        if os.path.exists(folder):
+            import subprocess
+            subprocess.Popen(f'explorer /select,"{self.image_path}"')
 
 
 class ConfigEditorDialog(QDialog):
@@ -630,8 +681,14 @@ class PlottingTab(QWidget):
         self.stop_btn = QPushButton("停止")
         self.stop_btn.setEnabled(False)
         self.stop_btn.clicked.connect(self.stop_plotting)
+        
+        self.preview_btn = QPushButton("预览结果")
+        self.preview_btn.setEnabled(False)
+        self.preview_btn.clicked.connect(self.preview_results)
+        
         btn_layout.addWidget(self.start_btn)
         btn_layout.addWidget(self.stop_btn)
+        btn_layout.addWidget(self.preview_btn)
         layout.addLayout(btn_layout)
         
         # 进度条
@@ -708,9 +765,92 @@ class PlottingTab(QWidget):
         self.progress.setValue(100 if success else 0)
         
         if success:
+            self.preview_btn.setEnabled(True)
             QMessageBox.information(self, "完成", message)
         else:
             QMessageBox.warning(self, "失败", message)
+    
+    def preview_results(self):
+        """预览生成的图片结果"""
+        output_dir = self.output_dir.text()
+        if not output_dir or not os.path.exists(output_dir):
+            QMessageBox.warning(self, "警告", "输出目录不存在！")
+            return
+        
+        # 查找图片文件
+        image_extensions = ['.png', '.jpg', '.jpeg', '.gif', '.bmp']
+        image_files = []
+        for f in os.listdir(output_dir):
+            if os.path.splitext(f)[1].lower() in image_extensions:
+                image_files.append(os.path.join(output_dir, f))
+        
+        if not image_files:
+            QMessageBox.warning(self, "未找到图片", "输出目录中没有找到图片文件！")
+            return
+        
+        # 如果只有一张图片，直接预览
+        if len(image_files) == 1:
+            dialog = ImagePreviewDialog(image_files[0], self)
+            dialog.exec()
+        else:
+            # 多张图片时显示文件选择对话框
+            class ImageSelectDialog(QDialog):
+                def __init__(self, images, parent=None):
+                    super().__init__(parent)
+                    self.images = images
+                    self.selected_image = None
+                    self.init_ui()
+                
+                def init_ui(self):
+                    self.setWindowTitle("选择要预览的图片")
+                    self.setGeometry(100, 100, 500, 400)
+                    layout = QVBoxLayout()
+                    
+                    self.list_widget = QListWidget()
+                    for img in self.images:
+                        item = QListWidgetItem(os.path.basename(img))
+                        item.setData(Qt.ItemDataRole.UserRole, img)
+                        self.list_widget.addItem(item)
+                    
+                    self.list_widget.itemDoubleClicked.connect(self.on_item_double_click)
+                    layout.addWidget(self.list_widget)
+                    
+                    btn_layout = QHBoxLayout()
+                    preview_btn = QPushButton("预览选中")
+                    preview_btn.clicked.connect(self.on_preview)
+                    btn_layout.addWidget(preview_btn)
+                    
+                    open_folder_btn = QPushButton("打开文件夹")
+                    open_folder_btn.clicked.connect(self.open_folder)
+                    btn_layout.addWidget(open_folder_btn)
+                    
+                    close_btn = QPushButton("关闭")
+                    close_btn.clicked.connect(self.close)
+                    btn_layout.addWidget(close_btn)
+                    
+                    layout.addLayout(btn_layout)
+                    self.setLayout(layout)
+                
+                def on_item_double_click(self, item):
+                    self.selected_image = item.data(Qt.ItemDataRole.UserRole)
+                    dialog = ImagePreviewDialog(self.selected_image, self)
+                    dialog.exec()
+                
+                def on_preview(self):
+                    current_row = self.list_widget.currentRow()
+                    if current_row >= 0:
+                        self.selected_image = self.images[current_row]
+                        dialog = ImagePreviewDialog(self.selected_image, self)
+                        dialog.exec()
+                
+                def open_folder(self):
+                    folder = os.path.dirname(self.images[0])
+                    if os.path.exists(folder):
+                        import subprocess
+                        subprocess.Popen(f'explorer "{folder}"')
+            
+            dialog = ImageSelectDialog(image_files, self)
+            dialog.exec()
 
 
 class EvaluationTab(QWidget):
@@ -923,7 +1063,7 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(title)
         
         # 提示标签
-        tip = QLabel("💡 修复版：支持拖放、下载数据集、生成配置、评估初始化")
+        tip = QLabel("💡 修复版：支持拖放、下载数据集、生成配置、评估初始化、图片预览")
         tip.setStyleSheet("color: green; font-style: italic;")
         tip.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(tip)
@@ -938,7 +1078,7 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.tabs)
         
         # 状态栏
-        self.statusBar().showMessage("就绪 | 修复版 v1.2")
+        self.statusBar().showMessage("就绪 | 修复版 v1.3")
         
         central_widget.setLayout(main_layout)
 

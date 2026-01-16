@@ -1,11 +1,13 @@
-"""
-Genie Backend - 连接GUI和实际功能
+"""Genie Backend - 连接GUI和实际功能
 """
 import os
 import sys
 import subprocess
 import shutil
 from pathlib import Path
+
+# Windows 标志：阻止创建新控制台窗口
+CREATE_NO_WINDOW = 0x08000000
 
 
 class GenieBackend:
@@ -37,7 +39,8 @@ class GenieBackend:
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
-                universal_newlines=True
+                universal_newlines=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
             )
             
             for line in iter(process.stdout.readline, ''):
@@ -103,7 +106,8 @@ class GenieBackend:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1
+                bufsize=1,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
             )
             
             for line in iter(process.stdout.readline, ''):
@@ -144,7 +148,8 @@ class GenieBackend:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1
+                bufsize=1,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
             )
             
             for line in iter(process.stdout.readline, ''):
@@ -193,7 +198,8 @@ class GenieBackend:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
-                bufsize=1
+                bufsize=1,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
             )
             
             for line in iter(process.stdout.readline, ''):
